@@ -1,33 +1,79 @@
-Cloud Airline Booking System (CABS)
+<div align="center">
+  <h1 align="left">Cloud Airline Booking System (CABS) ✈️</h1>
+  <p align="left">
+    A modern, full-stack flight booking application built with Next.js, TypeScript, and Supabase.
+  </p>
+</div>
 
-This repository contains the source code for the Cloud Airline Booking System (CABS), a comprehensive web application developed as a course project for "System Analysis and Design". CABS is designed to provide a seamless and intuitive flight booking experience for users.
+---
 
-The platform allows both guests and registered members to search for flights, select seats from an interactive map, and complete their bookings through a secure payment process. The system is built to support essential airline operations from the customer's perspective, including user registration, account management, and viewing booking history.
+## 📖 About The Project
 
-Key Features
+**Cloud Airline Booking System (CABS)** is a web application that simulates a real-world airline booking platform. It allows users to search for domestic flights, select seats from an interactive map, and complete their booking as either a guest or a registered member.
 
-    Flight Search: Users can search for one-way or round-trip domestic flights based on departure/arrival locations and dates.
+This project was developed as a practical application of system analysis, design, and implementation principles, focusing on a modern, serverless-first architecture to ensure a great user experience and developer productivity.
 
-Interactive Seat Selection: A visual seat map allows users to choose their preferred seats according to their ticket class.
+### ✨ Key Features
 
-User Authentication: Secure user registration and login are handled, enabling members to manage their personal information and view their booking history.
+* **Flight Search**: Search for one-way or round-trip domestic flights based on destination and date.
+* **Interactive Seat Selection**: Visually select available seats from an aircraft map based on the chosen ticket class.
+* **Secure User Authentication**: Full registration and login system for members, powered by Supabase Auth.
+* **Booking Management**: Members can view their complete booking history and cancel upcoming trips.
+* **Transactional Emails**: Automated booking confirmations and password reset emails are handled by Resend.
+* **Responsive Design**: A clean and intuitive UI that works seamlessly across desktop, tablet, and mobile devices.
 
-Booking Management: Members can view past and upcoming trips and have the option to cancel their bookings.
+---
 
-    Transactional Emails: Automated booking confirmations and password reset emails are sent to users.
+## 🛠️ Tech Stack
 
-Tech Stack
+This project leverages a powerful and modern tech stack for a scalable, serverless application:
 
-This project leverages a modern, serverless-first tech stack for scalability and rapid development:
+* **Framework**: **Next.js**
+* **Language**: **TypeScript**
+* **Backend & Database**: **Supabase** (PostgreSQL, Auth, Auto-generated APIs)
+* **Transactional Emails**: **Resend**
+* **Styling**: **Tailwind CSS**
+* **UI/UX Design**: **Figma**
 
-    Framework: Next.js
+---
 
-    Language: TypeScript
+## 🚀 Getting Started
 
-    Backend & Database: Supabase (PostgreSQL, Auth, Auto-generated APIs)
+To get a local copy up and running, follow these simple steps.
 
-    Transactional Emails: Resend
+### Prerequisites
 
-    Styling: Tailwind CSS
+* Node.js (v18 or later)
+* npm or yarn
+* A Supabase account and project
+* A Resend account and API key
 
-    UI/UX Design: Figma
+### Installation
+
+1.  **Clone the repo**
+    ```sh
+    git clone [https://github.com/your_username/cabs-booking-system.git](https://github.com/your_username/cabs-booking-system.git)
+    ```
+2.  **Install NPM packages**
+    ```sh
+    npm install
+    ```
+3.  **Set up environment variables**
+    * Create a `.env.local` file in the root of the project.
+    * Add your Supabase Project URL, Anon Key, and Resend API Key.
+        ```env
+        NEXT_PUBLIC_SUPABASE_URL='YOUR_SUPABASE_URL'
+        NEXT_PUBLIC_SUPABASE_ANON_KEY='YOUR_SUPABASE_ANON_KEY'
+        RESEND_API_KEY='YOUR_RESEND_API_KEY'
+        ```
+4.  **Run the development server**
+    ```sh
+    npm run dev
+    ```
+    Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+---
+
+##  STATUS
+
+This project was created for academic purposes as part of the **System Analysis and Design** curriculum at the **Hanoi University of Civil Engineering (HUCE)**.
