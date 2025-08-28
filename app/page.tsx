@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import BookingForm from "@/components/booking-form"
 import LoginModal from "@/components/login-modal"
@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { useLanguage } from "@/lib/language-context"
+import LanguageSelector from "@/components/language-selector"
 
 export default function Home() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
@@ -18,6 +19,7 @@ export default function Home() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
   const [dropdownView, setDropdownView] = useState("main") // 'main' or 'language'
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   const handleSignOut = async () => {
     await signOut()
@@ -55,6 +57,20 @@ export default function Home() {
     }
   }, [userMenuOpen])
 
+  // Click outside handler for user menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [userMenuOpen])
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#f8f9fa] to-white">
       <div className="container mx-auto px-4 py-8">
@@ -73,17 +89,20 @@ export default function Home() {
               </li>
               <li>
                 <Link href="/booking-status" className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
-                  Booking Status
+                  {t("bookingStatus")}
                 </Link>
               </li>
             </ul>
           </nav>
           <div className="flex items-center gap-4">
+            {/* Global Language Selector */}
+            <LanguageSelector />
+
             {loading ? (
               <div className="h-10 w-10 animate-pulse rounded-full bg-gray-200"></div>
             ) : isAuthenticated && user ? (
               <>
-                <div className="relative">
+                <div className="relative" ref={userMenuRef}>
                   <button
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
                     className="flex items-center justify-center rounded-full bg-[#0f2d3c] h-10 w-10 text-white hover:bg-[#0f2d3c]/90"
@@ -108,27 +127,6 @@ export default function Home() {
                           </button>
                           <button
                             onClick={() => {
-                              setDropdownView("language")
-                            }}
-                            className="flex w-full justify-between items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            <span>{t("language")}</span>
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polyline points="9 18 15 12 9 6" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => {
                               handleSignOut()
                               setUserMenuOpen(false)
                             }}
@@ -138,80 +136,7 @@ export default function Home() {
                           </button>
                         </>
                       ) : (
-                        <>
-                          <div className="flex items-center px-4 py-2 text-sm font-medium border-b">
-                            <button onClick={() => setDropdownView("main")} className="mr-2">
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <polyline points="15 18 9 12 15 6" />
-                              </svg>
-                            </button>
-                            <span>{t("language")}</span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setLanguage("en")
-                              setDropdownView("main")
-                            }}
-                            className={`flex items-center w-full px-4 py-2 text-sm ${
-                              language === "en" ? "bg-gray-100 font-medium" : ""
-                            }`}
-                          >
-                            <span className="ml-8">English</span>
-                            {language === "en" && (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="ml-auto"
-                              >
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setLanguage("vi")
-                              setDropdownView("main")
-                            }}
-                            className={`flex items-center w-full px-4 py-2 text-sm ${
-                              language === "vi" ? "bg-gray-100 font-medium" : ""
-                            }`}
-                          >
-                            <span className="ml-8">Tiếng Việt</span>
-                            {language === "vi" && (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="ml-auto"
-                              >
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            )}
-                          </button>
-                        </>
+                        <></>
                       )}
                     </div>
                   )}
@@ -277,82 +202,82 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
-              <h3 className="text-lg font-semibold mb-4">Cloud Airlines</h3>
-              <p className="text-gray-300">Your trusted partner for comfortable and reliable air travel.</p>
+              <h3 className="text-lg font-semibold mb-4">{t("cloudAirlines")}</h3>
+              <p className="text-gray-300">{t("trustedPartner")}</p>
             </div>
             <div>
-              <h4 className="font-semibold mb-4">Quick Links</h4>
+              <h4 className="font-semibold mb-4">{t("quickLinks")}</h4>
               <ul className="space-y-2 text-gray-300">
                 <li>
                   <a href="#" className="hover:text-white">
-                    Book a Flight
+                    {t("bookAFlight")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Check-in
+                    {t("checkIn")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Flight Status
+                    {t("flightStatus")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Manage Booking
+                    {t("manageBooking")}
                   </a>
                 </li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4">Support</h4>
+              <h4 className="font-semibold mb-4">{t("support")}</h4>
               <ul className="space-y-2 text-gray-300">
                 <li>
                   <a href="#" className="hover:text-white">
-                    Contact Us
+                    {t("contactUs")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    FAQ
+                    {t("faq")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Baggage Info
+                    {t("baggageInfo")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Travel Guidelines
+                    {t("travelGuidelines")}
                   </a>
                 </li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4">Connect</h4>
+              <h4 className="font-semibold mb-4">{t("connect")}</h4>
               <ul className="space-y-2 text-gray-300">
                 <li>
                   <a href="#" className="hover:text-white">
-                    Newsletter
+                    {t("newsletter")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Social Media
+                    {t("socialMedia")}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white">
-                    Mobile App
+                    {t("mobileApp")}
                   </a>
                 </li>
               </ul>
             </div>
           </div>
           <div className="border-t border-[#1a3a4a] mt-8 pt-8 text-center text-gray-300">
-            <p>&copy; 2024 Cloud Airlines. All rights reserved.</p>
+            <p>{t("copyright")}</p>
           </div>
         </div>
       </footer>

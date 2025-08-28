@@ -14,6 +14,7 @@ import AirportSelector from "@/components/airport-selector"
 import PassengerModal from "@/components/passenger-modal"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
+import { useLanguage } from "@/lib/language-context"
 
 export default function BookingForm() {
   const [tripType, setTripType] = useState("round-trip")
@@ -30,6 +31,7 @@ export default function BookingForm() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useLanguage()
 
   const router = useRouter()
 
@@ -39,21 +41,31 @@ export default function BookingForm() {
 
   const getPassengerSummary = () => {
     const total = getTotalPassengers()
-    const classDisplay = passengerDetails.travelClass
-      .split("-")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ")
-    return `${total} Passenger${total !== 1 ? "s" : ""}, ${classDisplay}`
+
+    // Transform cabin class to match translation keys (camelCase format)
+    const travelClassKey = passengerDetails.travelClass
+      .split('-')
+      .map((part, index) => index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+      .join('')
+
+    const classDisplay = t(travelClassKey)
+
+    // Use the appropriate translation key based on passenger count
+    const passengerText = total === 1
+      ? t("passengersSummary").replace("{count}", total.toString())
+      : t("passengersSummaryPlural").replace("{count}", total.toString())
+
+    return `${passengerText}, ${classDisplay}`
   }
 
   const handleSearch = async () => {
     if (!fromLocation || !toLocation || !departDate) {
-      setError("Please select departure, destination, and travel dates")
+      setError(t("errorRequiredFields"))
       return
     }
 
     if (tripType === "round-trip" && !returnDate) {
-      setError("Please select a return date")
+      setError(t("errorReturnDate"))
       return
     }
 
@@ -79,7 +91,7 @@ export default function BookingForm() {
       )
     } catch (err) {
       console.error("Error checking flights:", err)
-      setError("Failed to check flight availability")
+      setError(t("errorCheckFlights"))
     } finally {
       setLoading(false)
     }
@@ -92,13 +104,13 @@ export default function BookingForm() {
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="round-trip" id="round-trip" />
             <Label htmlFor="round-trip" className="text-black">
-              Round Trip
+              {t("roundTrip")}
             </Label>
           </div>
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="one-way" id="one-way" />
             <Label htmlFor="one-way" className="text-black">
-              One Way
+              {t("oneWay")}
             </Label>
           </div>
         </RadioGroup>
@@ -114,24 +126,24 @@ export default function BookingForm() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <AirportSelector
           id="from-location"
-          label="From"
+          label={t("from")}
           value={fromLocation}
           onChange={setFromLocation}
-          placeholder="Select departure"
+          placeholder={t("selectDeparture")}
           excludeAirport={toLocation}
         />
 
         <AirportSelector
           id="to-location"
-          label="To"
+          label={t("to")}
           value={toLocation}
           onChange={setToLocation}
-          placeholder="Select destination"
+          placeholder={t("selectDestination")}
           excludeAirport={fromLocation}
         />
 
         <div>
-          <Label className="mb-2 block text-sm font-medium text-black">Depart</Label>
+          <Label className="mb-2 block text-sm font-medium text-black">{t("depart")}</Label>
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -142,7 +154,7 @@ export default function BookingForm() {
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {departDate ? format(departDate, "PPP") : <span>Select date</span>}
+                {departDate ? format(departDate, "PPP") : <span>{t("selectDate")}</span>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
@@ -153,7 +165,7 @@ export default function BookingForm() {
 
         {tripType === "round-trip" && (
           <div>
-            <Label className="mb-2 block text-sm font-medium text-black">Return</Label>
+            <Label className="mb-2 block text-sm font-medium text-black">{t("return")}</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -164,7 +176,7 @@ export default function BookingForm() {
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {returnDate ? format(returnDate, "PPP") : <span>Select date</span>}
+                  {returnDate ? format(returnDate, "PPP") : <span>{t("selectDate")}</span>}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
@@ -183,7 +195,7 @@ export default function BookingForm() {
 
       <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <Label className="mb-2 block text-sm font-medium text-black">Passengers & Class</Label>
+          <Label className="mb-2 block text-sm font-medium text-black">{t("passengersAndClass")}</Label>
           <Button
             variant="outline"
             className="w-full justify-start border-gray-300 bg-white text-left font-normal text-black hover:bg-gray-50 md:w-auto"
@@ -204,7 +216,7 @@ export default function BookingForm() {
         </div>
 
         <Button className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90" size="lg" onClick={handleSearch} disabled={loading}>
-          {loading ? "Searching..." : "Search Flights"}
+          {loading ? t("searching") : t("searchFlights")}
         </Button>
       </div>
     </div>

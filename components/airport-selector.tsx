@@ -6,6 +6,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { MapPin, Check, Loader2 } from "lucide-react"
 import supabaseClient from "@/lib/supabase"
+import { useLanguage } from "@/lib/language-context"
 
 interface Airport {
   airportcode: string
@@ -35,6 +36,7 @@ export default function AirportSelector({
   const [airports, setAirports] = useState<Airport[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useLanguage()
 
   useEffect(() => {
     const fetchAirports = async () => {
@@ -58,7 +60,7 @@ export default function AirportSelector({
         setAirports(data || [])
       } catch (err) {
         console.error("Error fetching airports:", err)
-        setError("Failed to load airports. Please try again.")
+        setError(t("failedToLoadAirports"))
       } finally {
         setLoading(false)
       }
@@ -100,7 +102,7 @@ export default function AirportSelector({
         </PopoverTrigger>
         <PopoverContent className="w-[300px] p-0" align="start">
           <Command>
-            <CommandInput placeholder="Search airport or city..." />
+            <CommandInput placeholder={t("searchAirportOrCity")} />
             <CommandList>
               {loading ? (
                 <div className="flex items-center justify-center py-6">
@@ -110,7 +112,7 @@ export default function AirportSelector({
                 <div className="py-6 text-center text-red-500">{error}</div>
               ) : (
                 <>
-                  <CommandEmpty>No airports found.</CommandEmpty>
+                  <CommandEmpty>{t("noAirportsFound")}</CommandEmpty>
                   <CommandGroup>
                     {airports.map((airport) => (
                       <CommandItem
