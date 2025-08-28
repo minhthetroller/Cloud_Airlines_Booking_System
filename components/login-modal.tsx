@@ -239,7 +239,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               <Image src="/logo.png" alt="COSMILE Logo" width={180} height={60} className="h-12 w-auto" />
             </div>
             <p className="text-sm text-[#0f2d3c]">We invite you to experience</p>
-            <p className="text-sm text-[#0f2d3c]">The premium frequent flyer program of STARLUX Airlines</p>
+            <p className="text-sm text-[#0f2d3c]">The premium frequent flyer program of Cloud Airlines</p>
           </div>
 
           {/* Right side with login form */}
