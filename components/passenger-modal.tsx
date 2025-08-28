@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useLanguage } from "@/lib/language-context"
 
 interface PassengerDetails {
   adults: number
@@ -26,6 +27,7 @@ export default function PassengerModal({
   initialDetails = { adults: 1, children: 0, infants: 0, travelClass: "economy-saver" },
 }: PassengerModalProps) {
   const [details, setDetails] = useState<PassengerDetails>(initialDetails)
+  const { t } = useLanguage()
 
   const handleIncrement = (type: keyof Pick<PassengerDetails, "adults" | "children" | "infants">) => {
     setDetails((prev) => {
@@ -70,14 +72,14 @@ export default function PassengerModal({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Passengers & Class</DialogTitle>
+          <DialogTitle>{t("passengersAndClass")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-6 py-4">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-medium">Adults</h3>
-                <p className="text-xs text-gray-500">Age 12+</p>
+                <h3 className="text-sm font-medium">{t("adults")}</h3>
+                <p className="text-xs text-gray-500">{t("adultsAgeDescription")}</p>
               </div>
               <div className="flex items-center gap-3">
                 <Button
@@ -104,8 +106,8 @@ export default function PassengerModal({
 
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-medium">Children</h3>
-                <p className="text-xs text-gray-500">Age 2-11</p>
+                <h3 className="text-sm font-medium">{t("children")}</h3>
+                <p className="text-xs text-gray-500">{t("childrenAgeDescription")}</p>
               </div>
               <div className="flex items-center gap-3">
                 <Button
@@ -132,8 +134,8 @@ export default function PassengerModal({
 
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-medium">Infants</h3>
-                <p className="text-xs text-gray-500">Under 2</p>
+                <h3 className="text-sm font-medium">{t("infants")}</h3>
+                <p className="text-xs text-gray-500">{t("infantsAgeDescription")}</p>
               </div>
               <div className="flex items-center gap-3">
                 <Button
@@ -164,23 +166,23 @@ export default function PassengerModal({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-sm font-medium">Cabin Class</h3>
+            <h3 className="text-sm font-medium">{t("cabinClass")}</h3>
             <Select value={details.travelClass} onValueChange={handleClassChange}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select cabin class" />
+                <SelectValue placeholder={t("selectCabinClass")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="economy-saver">Economy Saver</SelectItem>
-                <SelectItem value="economy-flex">Economy Flex</SelectItem>
-                <SelectItem value="premium-economy">Premium Economy</SelectItem>
-                <SelectItem value="business">Business</SelectItem>
-                <SelectItem value="first">First Class</SelectItem>
+                <SelectItem value="economy-saver">{t("economySaver")}</SelectItem>
+                <SelectItem value="economy-flex">{t("economyFlex")}</SelectItem>
+                <SelectItem value="premium-economy">{t("premiumEconomy")}</SelectItem>
+                <SelectItem value="business">{t("business")}</SelectItem>
+                <SelectItem value="first">{t("firstClass")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
         <div className="flex justify-end">
-          <Button onClick={handleConfirm}>Confirm</Button>
+          <Button onClick={handleConfirm}>{t("confirm")}</Button>
         </div>
       </DialogContent>
     </Dialog>

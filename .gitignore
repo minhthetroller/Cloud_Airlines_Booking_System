@@ -3,6 +3,15 @@
 # dependencies
 /node_modules
 
+# idea
+.idea
+
+# macOS
+.DS_Store
+
+# vsCode
+.vscode
+
 # next.js
 /.next/
 /out/
