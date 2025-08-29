@@ -687,7 +687,7 @@ export default function ResultsPage() {
       flightId: activeFlightId,
       class: activeClass,
       fareType,
-      price, // This is the base price per passenger
+      price: price, // This is the base price per passenger
       flightNumber: flight.flightnumber,
       departureTime: flight.departuredatetime,
       arrivalTime: flight.arrivaldatetime,
@@ -918,9 +918,71 @@ export default function ResultsPage() {
 
   useEffect(() => {
     if (departDate) {
-      setSelectedDate(new Date(departDate))
+      // When date changes from URL, immediately update the selected date
+      // and trigger a smooth scroll to center it
+      const newDate = new Date(departDate);
+      setSelectedDate(newDate);
+
+      // Calculate which dates will be in the date selector based on this date
+      // to ensure the new selection is centered
+      const datesForView = Array.from({ length: 7 }, (_, i) => {
+        return addDays(newDate, i - 3) // Center the selected date
+      });
+
+      // Update dates array immediately with basic info for smoother transition
+      // until the full data loads
+      const quickFormatDates = datesForView.map((date) => ({
+        date,
+        day: format(date, "EEE"),
+        dayOfMonth: format(date, "MMM d"),
+        price: null,
+        formattedDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+          date.getDate(),
+        ).padStart(2, "0")}`,
+        flightCount: 0,
+      }));
+
+      setDates(quickFormatDates);
     }
   }, [departDate])
+
+  // Adding a new function to handle date selection
+  const handleDateSelection = (selectedDate: string) => {
+    // Reset flight data before fetching new data
+    setDepartureResults([])
+    setReturnResults([])
+    setSelectedDepartureFlight(null)
+    setSelectedReturnFlight(null)
+    setActiveFlightId(null)
+    setActiveClass(null)
+
+    // Reset the data fetched flag to allow refetching with new date
+    setDataFetched(false)
+    setLoading(true)
+
+    // Create a new URL with updated departure date
+    const currentParams = new URLSearchParams(window.location.search)
+    currentParams.set('departDate', selectedDate)
+
+    // Update the URL without refreshing the page
+    const newUrl = `${window.location.pathname}?${currentParams.toString()}`
+    window.history.pushState({}, '', newUrl)
+
+    // Update the router query params to trigger refetch
+    router.push(newUrl, undefined, { shallow: true })
+  }
+
+  // Auto-dismiss error messages after a delay
+  useEffect(() => {
+    // If there's an error message, set a timer to clear it
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 5000); // Auto-dismiss after 5 seconds
+
+      return () => clearTimeout(timer); // Cleanup timer on unmount
+    }
+  }, [error]);
 
   return (
     <main className="min-h-screen bg-[#0f2d3c] pb-20 text-white">
@@ -965,11 +1027,12 @@ export default function ResultsPage() {
               const searchDateObj = departDate ? new Date(departDate) : new Date()
               const isSelected = date.formattedDate === format(searchDateObj, "yyyy-MM-dd")
               return (
-                <div
+                <button
                   key={date.dayOfMonth}
                   className={`cursor-pointer p-4 text-center ${
                     isSelected ? "bg-[#3a2d4c] text-white" : "bg-[#f8f0ff] text-[#0f2d3c] hover:bg-[#e8e0ef]"
                   }`}
+                  onClick={() => handleDateSelection(date.formattedDate)}
                 >
                   <div className="font-medium">
                     {date.day}, {date.dayOfMonth}
@@ -979,7 +1042,7 @@ export default function ResultsPage() {
                       ? `${date.flightCount} Flight${date.flightCount > 1 ? "s" : ""}`
                       : "No flights"}
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
