@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import supabaseClient from "@/lib/supabase"
+import {NavigateOptions} from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 interface Airport {
   airportcode: string
@@ -83,7 +84,7 @@ interface PassengerDetails {
   travelClass: string
 }
 
-export default function ResultsPage() {
+export default function ResultsPage(href: string, options?: NavigateOptions) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -99,7 +100,6 @@ export default function ResultsPage() {
   const [activeClass, setActiveClass] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("departure")
   const [dates, setDates] = useState<DateOption[]>([])
-  const [dataFetched, setDataFetched] = useState(false)
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
   const [passengerDetails, setPassengerDetails] = useState<PassengerDetails>({
     adults: 1,
@@ -109,6 +109,8 @@ export default function ResultsPage() {
   })
   const [totalPassengers, setTotalPassengers] = useState(1)
   const isFirstRender = React.useRef(true)
+  const [expectedFlightCount, setExpectedFlightCount] = useState(2)
+  const [hasShownNoFlights, setHasShownNoFlights] = useState(false)
 
   // Get search parameters
   const from = searchParams.get("from") || ""
@@ -118,6 +120,372 @@ export default function ResultsPage() {
   const returnDate = searchParams.get("returnDate") || ""
   const isRoundTrip = tripType === "round-trip"
   const selectedClass = searchParams.get("class") || "economy"
+
+  // Centralized useEffect for fetching flights when search params change
+  useEffect(() => {
+    const fetchFlights = async () => {
+      if (!from || !to || !departDate || Object.keys(airports).length === 0) {
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+      setDepartureResults([])
+      setReturnResults([])
+
+      try {
+        // Parse the date strings to Date objects
+        const departDateObj = departDate ? new Date(departDate) : null
+        const returnDateObj = returnDate ? new Date(returnDate) : null
+
+        // Format dates for database query (YYYY-MM-DD)
+        const formattedDepartDate = departDateObj
+          ? `${departDateObj.getFullYear()}-${String(departDateObj.getMonth() + 1).padStart(2, "0")}-${String(
+              departDateObj.getDate(),
+            ).padStart(2, "0")}`
+          : null
+
+        console.log("Searching for flights:", { from, to, departDate: formattedDepartDate })
+
+        // Step 1: Fetch departure flights with proper date filtering
+        let departureQuery = supabaseClient
+          .from("flights")
+          .select(
+            `
+        flightid, 
+        flightnumber, 
+        departureairportcode, 
+        arrivalairportcode, 
+        departuredatetime, 
+        arrivaldatetime, 
+        status,
+        travelmiles,
+        airplaneid
+      `,
+          )
+          .eq("departureairportcode", from)
+          .eq("arrivalairportcode", to)
+
+        // Add date filtering if a date was provided
+        if (formattedDepartDate) {
+          departureQuery = departureQuery
+            .gte("departuredatetime", `${formattedDepartDate}T00:00:00`)
+            .lt("departuredatetime", `${formattedDepartDate}T23:59:59`)
+        }
+
+        const { data: departureData, error: departureError } = await departureQuery
+
+        if (departureError) throw new Error(departureError.message)
+
+        // Step 2: Fetch return flights if round trip with similar filtering
+        let returnData = null
+        if (isRoundTrip && returnDateObj) {
+          const formattedReturnDate = `${returnDateObj.getFullYear()}-${String(returnDateObj.getMonth() + 1).padStart(
+            2,
+            "0",
+          )}-${String(returnDateObj.getDate()).padStart(2, "0")}`
+
+          let returnQuery = supabaseClient
+            .from("flights")
+            .select(
+              `
+          flightid, 
+          flightnumber, 
+          departureairportcode, 
+          arrivalairportcode, 
+          departuredatetime, 
+          arrivaldatetime, 
+          status,
+          travelmiles,
+          airplaneid
+        `,
+            )
+            .eq("departureairportcode", to)
+            .eq("arrivalairportcode", from)
+
+          // Add date filtering for return flight
+          if (formattedReturnDate) {
+            returnQuery = returnQuery
+              .gte("departuredatetime", `${formattedReturnDate}T00:00:00`)
+              .lt("departuredatetime", `${formattedReturnDate}T23:59:59`)
+          }
+
+          const { data, error: returnError } = await returnQuery
+
+          if (returnError) throw new Error(returnError.message)
+          returnData = data
+        }
+
+        // Step 3: Get all flight IDs to check availability and prices
+        const flightIds = [
+          ...(departureData?.map((f) => f.flightid) || []),
+          ...(returnData?.map((f) => f.flightid) || []),
+        ]
+
+        if (flightIds.length === 0) {
+          setLoading(false)
+          setDepartureResults([])
+          setReturnResults([])
+          return
+        }
+
+        // Step 4: Fetch flight prices in one query
+        const { data: flightPricesData, error: flightPricesError } = await supabaseClient
+          .from("flightprices")
+          .select("flightid, classid, price, currencycode")
+          .in("flightid", flightIds)
+
+        if (flightPricesError) throw new Error(flightPricesError.message)
+
+        // Create maps for prices by flight ID and class ID
+        const priceMap: Record<number, Record<number, number>> = {}
+
+        flightPricesData?.forEach((item) => {
+          if (!priceMap[item.flightid]) {
+            priceMap[item.flightid] = {}
+          }
+          priceMap[item.flightid][item.classid] = item.price
+        })
+
+        // Step 5: Fetch seat availability from flightseatoccupancy
+        // First, get all airplane IDs from the flights
+        const airplaneIds = [
+          ...new Set([...(departureData?.map((f) => f.airplaneid) || []), ...(returnData?.map((f) => f.airplaneid) || [])]),
+        ]
+
+        // Get all seats for these airplane types
+        const { data: seatsData, error: seatsError } = await supabaseClient
+          .from("seats")
+          .select("seatid, airplanetypeid, classid")
+          .in("airplanetypeid", airplaneIds)
+
+        if (seatsError) throw new Error(seatsError.message)
+
+        // Group seats by airplane type and class
+        const seatsByAirplaneAndClass: Record<number, Record<number, number>> = {}
+        seatsData?.forEach((seat) => {
+          if (!seatsByAirplaneAndClass[seat.airplanetypeid]) {
+            seatsByAirplaneAndClass[seat.airplanetypeid] = {}
+          }
+
+          if (!seatsByAirplaneAndClass[seat.airplanetypeid][seat.classid]) {
+            seatsByAirplaneAndClass[seat.airplanetypeid][seat.classid] = 0
+          }
+
+          seatsByAirplaneAndClass[seat.airplanetypeid][seat.classid]++
+        })
+
+        // Get occupied seats for each flight
+        const { data: occupiedSeatsData, error: occupiedSeatsError } = await supabaseClient
+          .from("flightseatoccupancy")
+          .select("flightid, seatid, isoccupied")
+          .in("flightid", flightIds)
+          .eq("isoccupied", true)
+
+        if (occupiedSeatsError) throw new Error(occupiedSeatsError.message)
+
+        // Count occupied seats by flight and seat class
+        const occupiedSeatsByFlight: Record<number, Record<number, number>> = {}
+
+        // Initialize with zero counts
+        flightIds.forEach((flightId) => {
+          occupiedSeatsByFlight[flightId] = {
+            1: 0, // Economy Saver
+            2: 0, // Economy Flex
+            3: 0, // Premium Economy
+            4: 0, // Business
+            5: 0, // First Class
+          }
+        })
+
+        // If there are occupied seats, we need to get their class IDs
+        if (occupiedSeatsData && occupiedSeatsData.length > 0) {
+          // Get all seat IDs from occupied seats
+          const occupiedSeatIds = occupiedSeatsData.map((seat) => seat.seatid)
+
+          // Get class information for these seats
+          const { data: seatClassData, error: seatClassError } = await supabaseClient
+            .from("seats")
+            .select("seatid, classid")
+            .in("seatid", occupiedSeatIds)
+
+          if (seatClassError) throw new Error(seatClassError.message)
+
+          // Create a map of seat IDs to class IDs
+          const seatToClassMap: Record<number, number> = {}
+          seatClassData?.forEach((seat) => {
+            seatToClassMap[seat.seatid] = seat.classid
+          })
+
+          // Count occupied seats by flight and class
+          occupiedSeatsData.forEach((occupiedSeat) => {
+            const flightId = occupiedSeat.flightid
+            const classId = seatToClassMap[occupiedSeat.seatid]
+
+            if (flightId && classId) {
+              if (!occupiedSeatsByFlight[flightId]) {
+                occupiedSeatsByFlight[flightId] = {}
+              }
+
+              if (!occupiedSeatsByFlight[flightId][classId]) {
+                occupiedSeatsByFlight[flightId][classId] = 0
+              }
+
+              occupiedSeatsByFlight[flightId][classId]++
+            }
+          })
+        }
+
+        // Step 6: Process departure flights with availability and price data
+        const processedDepartureFlights =
+          departureData?.map((flight) => {
+            const departureTime = parseISO(flight.departuredatetime)
+            const arrivalTime = parseISO(flight.arrivaldatetime)
+            const durationMs = arrivalTime.getTime() - departureTime.getTime()
+            const hours = Math.floor(durationMs / (1000 * 60 * 60))
+            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+
+            // Get total seats by class for this airplane
+            const airplaneTypeId = 1 // Default to 1 if not available
+            const totalSeatsByClass = seatsByAirplaneAndClass[airplaneTypeId] || {
+              1: 30, // Default Economy Saver seats
+              2: 20, // Default Economy Flex seats
+              3: 10, // Default Premium Economy seats
+              4: 8, // Default Business seats
+              5: 4, // Default First Class seats
+            }
+
+            // Get occupied seats for this flight
+            const occupiedSeats = occupiedSeatsByFlight[flight.flightid] || {
+              1: 0,
+              2: 0,
+              3: 0,
+              4: 0,
+              5: 0,
+            }
+
+            // Calculate available seats by class
+            const availableSeats = {
+              1: Math.max(0, (totalSeatsByClass[1] || 0) - (occupiedSeats[1] || 0)),
+              2: Math.max(0, (totalSeatsByClass[2] || 0) - (occupiedSeats[2] || 0)),
+              3: Math.max(0, (totalSeatsByClass[3] || 0) - (occupiedSeats[3] || 0)),
+              4: Math.max(0, (totalSeatsByClass[4] || 0) - (occupiedSeats[4] || 0)),
+              5: Math.max(0, (totalSeatsByClass[5] || 0) - (occupiedSeats[5] || 0)),
+            }
+
+            // Calculate total availability for Economy (classes 1, 2, 3)
+            const economyAvailability = availableSeats[1] + availableSeats[2] + availableSeats[3]
+
+            // Calculate total availability for First Class (classes 4, 5)
+            const firstClassAvailability = availableSeats[4] + availableSeats[5]
+
+            // Get lowest price for Economy (classes 1, 2, 3)
+            const economyPrices = [
+              priceMap[flight.flightid]?.[1],
+              priceMap[flight.flightid]?.[2],
+              priceMap[flight.flightid]?.[3],
+            ].filter(Boolean)
+
+            const economyPrice = economyPrices.length > 0 ? Math.min(...economyPrices) : null
+
+            // Get lowest price for First Class (classes 4, 5)
+            const firstClassPrices = [priceMap[flight.flightid]?.[4], priceMap[flight.flightid]?.[5]].filter(Boolean)
+
+            const firstClassPrice = firstClassPrices.length > 0 ? Math.min(...firstClassPrices) : null
+
+            return {
+              ...flight,
+              departureAirport: airports[flight.departureairportcode],
+              arrivalAirport: airports[flight.arrivalairportcode],
+              economyPrice,
+              firstClassPrice,
+              duration: `${hours}h ${minutes} mins`,
+              economyAvailability,
+              firstClassAvailability,
+            }
+          }) || []
+
+        // Step 7: Process return flights with availability and price data
+        const processedReturnFlights =
+          returnData?.map((flight) => {
+            const departureTime = parseISO(flight.departuredatetime)
+            const arrivalTime = parseISO(flight.arrivaldatetime)
+            const durationMs = arrivalTime.getTime() - departureTime.getTime()
+            const hours = Math.floor(durationMs / (1000 * 60 * 60))
+            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+
+            // Get total seats by class for this airplane
+            const airplaneTypeId = 1 // Default to 1 if not available
+            const totalSeatsByClass = seatsByAirplaneAndClass[airplaneTypeId] || {
+              1: 30, // Default Economy Saver seats
+              2: 20, // Default Economy Flex seats
+              3: 10, // Default Premium Economy seats
+              4: 8, // Default Business seats
+              5: 4, // Default First Class seats
+            }
+
+            // Get occupied seats for this flight
+            const occupiedSeats = occupiedSeatsByFlight[flight.flightid] || {
+              1: 0,
+              2: 0,
+              3: 0,
+              4: 0,
+              5: 0,
+            }
+
+            // Calculate available seats by class
+            const availableSeats = {
+              1: Math.max(0, (totalSeatsByClass[1] || 0) - (occupiedSeats[1] || 0)),
+              2: Math.max(0, (totalSeatsByClass[2] || 0) - (occupiedSeats[2] || 0)),
+              3: Math.max(0, (totalSeatsByClass[3] || 0) - (occupiedSeats[3] || 0)),
+              4: Math.max(0, (totalSeatsByClass[4] || 0) - (occupiedSeats[4] || 0)),
+              5: Math.max(0, (totalSeatsByClass[5] || 0) - (occupiedSeats[5] || 0)),
+            }
+
+            // Calculate total availability for Economy (classes 1, 2, 3)
+            const economyAvailability = availableSeats[1] + availableSeats[2] + availableSeats[3]
+
+            // Calculate total availability for First Class (classes 4, 5)
+            const firstClassAvailability = availableSeats[4] + availableSeats[5]
+
+            // Get lowest price for Economy (classes 1, 2, 3)
+            const economyPrices = [
+              priceMap[flight.flightid]?.[1],
+              priceMap[flight.flightid]?.[2],
+              priceMap[flight.flightid]?.[3],
+            ].filter(Boolean)
+
+            const economyPrice = economyPrices.length > 0 ? Math.min(...economyPrices) : null
+
+            // Get lowest price for First Class (classes 4, 5)
+            const firstClassPrices = [priceMap[flight.flightid]?.[4], priceMap[flight.flightid]?.[5]].filter(Boolean)
+
+            const firstClassPrice = firstClassPrices.length > 0 ? Math.min(...firstClassPrices) : null
+
+            return {
+              ...flight,
+              departureAirport: airports[flight.departureairportcode],
+              arrivalAirport: airports[flight.arrivalairportcode],
+              economyPrice,
+              firstClassPrice,
+              duration: `${hours}h ${minutes} mins`,
+              economyAvailability,
+              firstClassAvailability,
+            }
+          }) || []
+
+        setDepartureResults(processedDepartureFlights)
+        setReturnResults(processedReturnFlights)
+      } catch (err: any) {
+        console.error("Error fetching flights:", err)
+        setError("Failed to load flight information")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchFlights()
+  }, [from, to, departDate, returnDate, isRoundTrip, airports])
 
   // Load passenger details from URL params and session storage
   useEffect(() => {
@@ -196,378 +564,6 @@ export default function ResultsPage() {
     fetchTicketClasses()
   }, [])
 
-  // Fetch flights data
-  const fetchFlights = useCallback(async () => {
-    if (!from || !to || !departDate || dataFetched) {
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Parse the date strings to Date objects
-      const departDateObj = departDate ? new Date(departDate) : null
-      const returnDateObj = returnDate ? new Date(returnDate) : null
-
-      // Format dates for database query (YYYY-MM-DD)
-      const formattedDepartDate = departDateObj
-        ? `${departDateObj.getFullYear()}-${String(departDateObj.getMonth() + 1).padStart(2, "0")}-${String(
-            departDateObj.getDate(),
-          ).padStart(2, "0")}`
-        : null
-
-      console.log("Searching for flights:", { from, to, departDate: formattedDepartDate })
-
-      // Step 1: Fetch departure flights with proper date filtering
-      let departureQuery = supabaseClient
-        .from("flights")
-        .select(`
-        flightid, 
-        flightnumber, 
-        departureairportcode, 
-        arrivalairportcode, 
-        departuredatetime, 
-        arrivaldatetime, 
-        status,
-        travelmiles,
-        airplaneid
-      `)
-        .eq("departureairportcode", from)
-        .eq("arrivalairportcode", to)
-
-      // Add date filtering if a date was provided
-      if (formattedDepartDate) {
-        departureQuery = departureQuery
-          .gte("departuredatetime", `${formattedDepartDate}T00:00:00`)
-          .lt("departuredatetime", `${formattedDepartDate}T23:59:59`)
-      }
-
-      const { data: departureData, error: departureError } = await departureQuery
-
-      if (departureError) throw new Error(departureError.message)
-
-      // Step 2: Fetch return flights if round trip with similar filtering
-      let returnData = null
-      if (isRoundTrip && returnDateObj) {
-        const formattedReturnDate = `${returnDateObj.getFullYear()}-${String(returnDateObj.getMonth() + 1).padStart(
-          2,
-          "0",
-        )}-${String(returnDateObj.getDate()).padStart(2, "0")}`
-
-        let returnQuery = supabaseClient
-          .from("flights")
-          .select(`
-          flightid, 
-          flightnumber, 
-          departureairportcode, 
-          arrivalairportcode, 
-          departuredatetime, 
-          arrivaldatetime, 
-          status,
-          travelmiles,
-          airplaneid
-        `)
-          .eq("departureairportcode", to)
-          .eq("arrivalairportcode", from)
-
-        // Add date filtering for return flight
-        if (formattedReturnDate) {
-          returnQuery = returnQuery
-            .gte("departuredatetime", `${formattedReturnDate}T00:00:00`)
-            .lt("departuredatetime", `${formattedReturnDate}T23:59:59`)
-        }
-
-        const { data, error: returnError } = await returnQuery
-
-        if (returnError) throw new Error(returnError.message)
-        returnData = data
-      }
-
-      // Step 3: Get all flight IDs to check availability and prices
-      const flightIds = [
-        ...(departureData?.map((f) => f.flightid) || []),
-        ...(returnData?.map((f) => f.flightid) || []),
-      ]
-
-      if (flightIds.length === 0) {
-        setError("No flights found for the selected route and date")
-        setLoading(false)
-        setDataFetched(true)
-        return
-      }
-
-      // Step 4: Fetch flight prices in one query
-      const { data: flightPricesData, error: flightPricesError } = await supabaseClient
-        .from("flightprices")
-        .select("flightid, classid, price, currencycode")
-        .in("flightid", flightIds)
-
-      if (flightPricesError) throw new Error(flightPricesError.message)
-
-      // Create maps for prices by flight ID and class ID
-      const priceMap: Record<number, Record<number, number>> = {}
-
-      flightPricesData?.forEach((item) => {
-        if (!priceMap[item.flightid]) {
-          priceMap[item.flightid] = {}
-        }
-        priceMap[item.flightid][item.classid] = item.price
-      })
-
-      // Step 5: Fetch seat availability from flightseatoccupancy
-      // First, get all airplane IDs from the flights
-      const airplaneIds = [
-        ...new Set([
-          ...(departureData?.map((f) => f.airplaneid) || []),
-          ...(returnData?.map((f) => f.airplaneid) || []),
-        ]),
-      ]
-
-      // Get all seats for these airplane types
-      const { data: seatsData, error: seatsError } = await supabaseClient
-        .from("seats")
-        .select("seatid, airplanetypeid, classid")
-        .in("airplanetypeid", airplaneIds)
-
-      if (seatsError) throw new Error(seatsError.message)
-
-      // Group seats by airplane type and class
-      const seatsByAirplaneAndClass: Record<number, Record<number, number>> = {}
-      seatsData?.forEach((seat) => {
-        if (!seatsByAirplaneAndClass[seat.airplanetypeid]) {
-          seatsByAirplaneAndClass[seat.airplanetypeid] = {}
-        }
-
-        if (!seatsByAirplaneAndClass[seat.airplanetypeid][seat.classid]) {
-          seatsByAirplaneAndClass[seat.airplanetypeid][seat.classid] = 0
-        }
-
-        seatsByAirplaneAndClass[seat.airplanetypeid][seat.classid]++
-      })
-
-      // Get occupied seats for each flight
-      const { data: occupiedSeatsData, error: occupiedSeatsError } = await supabaseClient
-        .from("flightseatoccupancy")
-        .select("flightid, seatid, isoccupied")
-        .in("flightid", flightIds)
-        .eq("isoccupied", true)
-
-      if (occupiedSeatsError) throw new Error(occupiedSeatsError.message)
-
-      // Count occupied seats by flight and seat class
-      const occupiedSeatsByFlight: Record<number, Record<number, number>> = {}
-
-      // Initialize with zero counts
-      flightIds.forEach((flightId) => {
-        occupiedSeatsByFlight[flightId] = {
-          1: 0, // Economy Saver
-          2: 0, // Economy Flex
-          3: 0, // Premium Economy
-          4: 0, // Business
-          5: 0, // First Class
-        }
-      })
-
-      // If there are occupied seats, we need to get their class IDs
-      if (occupiedSeatsData && occupiedSeatsData.length > 0) {
-        // Get all seat IDs from occupied seats
-        const occupiedSeatIds = occupiedSeatsData.map((seat) => seat.seatid)
-
-        // Get class information for these seats
-        const { data: seatClassData, error: seatClassError } = await supabaseClient
-          .from("seats")
-          .select("seatid, classid")
-          .in("seatid", occupiedSeatIds)
-
-        if (seatClassError) throw new Error(seatClassError.message)
-
-        // Create a map of seat IDs to class IDs
-        const seatToClassMap: Record<number, number> = {}
-        seatClassData?.forEach((seat) => {
-          seatToClassMap[seat.seatid] = seat.classid
-        })
-
-        // Count occupied seats by flight and class
-        occupiedSeatsData.forEach((occupiedSeat) => {
-          const flightId = occupiedSeat.flightid
-          const classId = seatToClassMap[occupiedSeat.seatid]
-
-          if (flightId && classId) {
-            if (!occupiedSeatsByFlight[flightId]) {
-              occupiedSeatsByFlight[flightId] = {}
-            }
-
-            if (!occupiedSeatsByFlight[flightId][classId]) {
-              occupiedSeatsByFlight[flightId][classId] = 0
-            }
-
-            occupiedSeatsByFlight[flightId][classId]++
-          }
-        })
-      }
-
-      // Step 6: Process departure flights with availability and price data
-      const processedDepartureFlights =
-        departureData?.map((flight) => {
-          const departureTime = parseISO(flight.departuredatetime)
-          const arrivalTime = parseISO(flight.arrivaldatetime)
-          const durationMs = arrivalTime.getTime() - departureTime.getTime()
-          const hours = Math.floor(durationMs / (1000 * 60 * 60))
-          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
-
-          // Get total seats by class for this airplane
-          const airplaneTypeId = 1 // Default to 1 if not available
-          const totalSeatsByClass = seatsByAirplaneAndClass[airplaneTypeId] || {
-            1: 30, // Default Economy Saver seats
-            2: 20, // Default Economy Flex seats
-            3: 10, // Default Premium Economy seats
-            4: 8, // Default Business seats
-            5: 4, // Default First Class seats
-          }
-
-          // Get occupied seats for this flight
-          const occupiedSeats = occupiedSeatsByFlight[flight.flightid] || {
-            1: 0,
-            2: 0,
-            3: 0,
-            4: 0,
-            5: 0,
-          }
-
-          // Calculate available seats by class
-          const availableSeats = {
-            1: Math.max(0, (totalSeatsByClass[1] || 0) - (occupiedSeats[1] || 0)),
-            2: Math.max(0, (totalSeatsByClass[2] || 0) - (occupiedSeats[2] || 0)),
-            3: Math.max(0, (totalSeatsByClass[3] || 0) - (occupiedSeats[3] || 0)),
-            4: Math.max(0, (totalSeatsByClass[4] || 0) - (occupiedSeats[4] || 0)),
-            5: Math.max(0, (totalSeatsByClass[5] || 0) - (occupiedSeats[5] || 0)),
-          }
-
-          // Calculate total availability for Economy (classes 1, 2, 3)
-          const economyAvailability = availableSeats[1] + availableSeats[2] + availableSeats[3]
-
-          // Calculate total availability for First Class (classes 4, 5)
-          const firstClassAvailability = availableSeats[4] + availableSeats[5]
-
-          // Get lowest price for Economy (classes 1, 2, 3)
-          const economyPrices = [
-            priceMap[flight.flightid]?.[1],
-            priceMap[flight.flightid]?.[2],
-            priceMap[flight.flightid]?.[3],
-          ].filter(Boolean)
-
-          const economyPrice = economyPrices.length > 0 ? Math.min(...economyPrices) : null
-
-          // Get lowest price for First Class (classes 4, 5)
-          const firstClassPrices = [priceMap[flight.flightid]?.[4], priceMap[flight.flightid]?.[5]].filter(Boolean)
-
-          const firstClassPrice = firstClassPrices.length > 0 ? Math.min(...firstClassPrices) : null
-
-          return {
-            ...flight,
-            departureAirport: airports[flight.departureairportcode],
-            arrivalAirport: airports[flight.arrivalairportcode],
-            economyPrice,
-            firstClassPrice,
-            duration: `${hours}h ${minutes} mins`,
-            economyAvailability,
-            firstClassAvailability,
-          }
-        }) || []
-
-      // Step 7: Process return flights with availability and price data
-      const processedReturnFlights =
-        returnData?.map((flight) => {
-          const departureTime = parseISO(flight.departuredatetime)
-          const arrivalTime = parseISO(flight.arrivaldatetime)
-          const durationMs = arrivalTime.getTime() - departureTime.getTime()
-          const hours = Math.floor(durationMs / (1000 * 60 * 60))
-          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
-
-          // Get total seats by class for this airplane
-          const airplaneTypeId = 1 // Default to 1 if not available
-          const totalSeatsByClass = seatsByAirplaneAndClass[airplaneTypeId] || {
-            1: 30, // Default Economy Saver seats
-            2: 20, // Default Economy Flex seats
-            3: 10, // Default Premium Economy seats
-            4: 8, // Default Business seats
-            5: 4, // Default First Class seats
-          }
-
-          // Get occupied seats for this flight
-          const occupiedSeats = occupiedSeatsByFlight[flight.flightid] || {
-            1: 0,
-            2: 0,
-            3: 0,
-            4: 0,
-            5: 0,
-          }
-
-          // Calculate available seats by class
-          const availableSeats = {
-            1: Math.max(0, (totalSeatsByClass[1] || 0) - (occupiedSeats[1] || 0)),
-            2: Math.max(0, (totalSeatsByClass[2] || 0) - (occupiedSeats[2] || 0)),
-            3: Math.max(0, (totalSeatsByClass[3] || 0) - (occupiedSeats[3] || 0)),
-            4: Math.max(0, (totalSeatsByClass[4] || 0) - (occupiedSeats[4] || 0)),
-            5: Math.max(0, (totalSeatsByClass[5] || 0) - (occupiedSeats[5] || 0)),
-          }
-
-          // Calculate total availability for Economy (classes 1, 2, 3)
-          const economyAvailability = availableSeats[1] + availableSeats[2] + availableSeats[3]
-
-          // Calculate total availability for First Class (classes 4, 5)
-          const firstClassAvailability = availableSeats[4] + availableSeats[5]
-
-          // Get lowest price for Economy (classes 1, 2, 3)
-          const economyPrices = [
-            priceMap[flight.flightid]?.[1],
-            priceMap[flight.flightid]?.[2],
-            priceMap[flight.flightid]?.[3],
-          ].filter(Boolean)
-
-          const economyPrice = economyPrices.length > 0 ? Math.min(...economyPrices) : null
-
-          // Get lowest price for First Class (classes 4, 5)
-          const firstClassPrices = [priceMap[flight.flightid]?.[4], priceMap[flight.flightid]?.[5]].filter(Boolean)
-
-          const firstClassPrice = firstClassPrices.length > 0 ? Math.min(...firstClassPrices) : null
-
-          return {
-            ...flight,
-            departureAirport: airports[flight.departureairportcode],
-            arrivalAirport: airports[flight.arrivalairportcode],
-            economyPrice,
-            firstClassPrice,
-            duration: `${hours}h ${minutes} mins`,
-            economyAvailability,
-            firstClassAvailability,
-          }
-        }) || []
-
-      setDepartureResults(processedDepartureFlights)
-      setReturnResults(processedReturnFlights)
-      setDataFetched(true)
-
-      if (processedDepartureFlights.length === 0) {
-        setError(`No flights found for the selected route and date`)
-      }
-    } catch (err: any) {
-      console.error("Error fetching flights:", err)
-      setError("Failed to load flight information")
-      setDataFetched(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [from, to, isRoundTrip, airports, departDate, returnDate, dataFetched])
-
-  // Fetch flights when airports are loaded
-  useEffect(() => {
-    if (Object.keys(airports).length > 0 && !dataFetched) {
-      fetchFlights()
-    }
-  }, [airports, fetchFlights, dataFetched])
-
   // Generate dates for the date selector with actual prices and flight counts
   const fetchPricesForDates = async () => {
     if (!from || !to || !selectedDate) return
@@ -611,6 +607,11 @@ export default function ResultsPage() {
         const flightIds = flightsData.map((f) => f.flightid)
         const flightCount = flightIds.length
 
+        // Update expected flight count for the selected date to show appropriate number of skeletons
+        if (dateObj.formattedDate === format(new Date(departDate), "yyyy-MM-dd")) {
+          setExpectedFlightCount(flightCount > 0 ? flightCount : 1)
+        }
+
         // Get prices and availability for these flights
         const { data: priceData } = await supabaseClient
           .from("flightprices")
@@ -653,11 +654,45 @@ export default function ResultsPage() {
 
   // Generate dates for the date selector
   const handlePreviousDays = () => {
-    setSelectedDate(subDays(selectedDate, 7))
+    const newSelectedDate = subDays(selectedDate, 7)
+    setSelectedDate(newSelectedDate)
+
+    // Create a loading state for the dates with flightCount = -1
+    const loadingDates = Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(newSelectedDate, i - 3)
+      return {
+        date,
+        day: format(date, "EEE"),
+        dayOfMonth: format(date, "MMM d"),
+        price: null,
+        formattedDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+          date.getDate(),
+        ).padStart(2, "0")}`,
+        flightCount: -1, // Use -1 to indicate loading
+      }
+    })
+    setDates(loadingDates)
   }
 
   const handleNextDays = () => {
-    setSelectedDate(addDays(selectedDate, 7))
+    const newSelectedDate = addDays(selectedDate, 7)
+    setSelectedDate(newSelectedDate)
+
+    // Create a loading state for the dates with flightCount = -1
+    const loadingDates = Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(newSelectedDate, i - 3)
+      return {
+        date,
+        day: format(date, "EEE"),
+        dayOfMonth: format(date, "MMM d"),
+        price: null,
+        formattedDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+          date.getDate(),
+        ).padStart(2, "0")}`,
+        flightCount: -1, // Use -1 to indicate loading
+      }
+    })
+    setDates(loadingDates)
   }
 
   // Format currency
@@ -758,11 +793,20 @@ export default function ResultsPage() {
 
   const renderFlightResults = (results: FlightResult[], isReturn = false) => {
     if (results.length === 0 && !loading) {
+      // Only show "No flights found" if we haven't shown it before or if we had flights before
+      if (!hasShownNoFlights || departureResults.length > 0) {
+        setHasShownNoFlights(true)
+      }
       return (
         <div className="rounded-lg bg-white p-6 text-center text-[#0f2d3c]">
           <p>No flights found for this route and date. Please try different dates or destinations.</p>
         </div>
       )
+    }
+
+    // Reset the flag when we have flights
+    if (results.length > 0 && hasShownNoFlights) {
+      setHasShownNoFlights(false)
     }
 
     return (
@@ -943,33 +987,36 @@ export default function ResultsPage() {
       }));
 
       setDates(quickFormatDates);
+
+      // Also reset selections when the date changes
+      setSelectedDepartureFlight(null)
+      setSelectedReturnFlight(null)
+      setActiveFlightId(null)
+      setActiveClass(null)
     }
   }, [departDate])
 
   // Adding a new function to handle date selection
-  const handleDateSelection = (selectedDate: string) => {
-    // Reset flight data before fetching new data
-    setDepartureResults([])
-    setReturnResults([])
-    setSelectedDepartureFlight(null)
-    setSelectedReturnFlight(null)
-    setActiveFlightId(null)
-    setActiveClass(null)
-
-    // Reset the data fetched flag to allow refetching with new date
-    setDataFetched(false)
-    setLoading(true)
+  const handleDateSelection = (date: DateOption) => {
+    // Don't show skeleton loading if there are no flights for this date
+    if (date.flightCount === 0) {
+      setLoading(false)
+      setExpectedFlightCount(0)
+      // Don't reset hasShownNoFlights when switching between dates with no flights
+    } else {
+      // Set expected flight count before navigation to ensure skeleton shows correct count
+      setExpectedFlightCount(date.flightCount > 0 ? date.flightCount : 1)
+      // Reset the flag when selecting a date with flights
+      setHasShownNoFlights(false)
+    }
 
     // Create a new URL with updated departure date
     const currentParams = new URLSearchParams(window.location.search)
-    currentParams.set('departDate', selectedDate)
+    currentParams.set("departDate", date.formattedDate)
 
-    // Update the URL without refreshing the page
-    const newUrl = `${window.location.pathname}?${currentParams.toString()}`
-    window.history.pushState({}, '', newUrl)
-
-    // Update the router query params to trigger refetch
-    router.push(newUrl, undefined, { shallow: true })
+    // Update the URL. The central useEffect will handle fetching.
+    // Using router.push to ensure the page re-renders with new searchParams
+    router.push(`${window.location.pathname}?${currentParams.toString()}`)
   }
 
   // Auto-dismiss error messages after a delay
@@ -1032,15 +1079,19 @@ export default function ResultsPage() {
                   className={`cursor-pointer p-4 text-center ${
                     isSelected ? "bg-[#3a2d4c] text-white" : "bg-[#f8f0ff] text-[#0f2d3c] hover:bg-[#e8e0ef]"
                   }`}
-                  onClick={() => handleDateSelection(date.formattedDate)}
+                  onClick={() => handleDateSelection(date)}
                 >
                   <div className="font-medium">
                     {date.day}, {date.dayOfMonth}
                   </div>
                   <div className="mt-1 text-sm">
-                    {date.flightCount > 0
-                      ? `${date.flightCount} Flight${date.flightCount > 1 ? "s" : ""}`
-                      : "No flights"}
+                    {date.flightCount === -1 ? (
+                      "Loading..."
+                    ) : date.flightCount > 0 ? (
+                      `${date.flightCount} Flight${date.flightCount > 1 ? "s" : ""}`
+                    ) : (
+                      "No flights"
+                    )}
                   </div>
                 </button>
               )
@@ -1048,8 +1099,9 @@ export default function ResultsPage() {
           </div>
         </section>
 
-        {loading ? (
-          <FlightResultsSkeleton />
+        {/* Results section - only show skeleton if we expect flights */}
+        {loading && expectedFlightCount > 0 ? (
+          <FlightResultsSkeleton count={expectedFlightCount} />
         ) : isRoundTrip ? (
           <Tabs defaultValue="departure" value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4 bg-[#0f2d3c]/50">
@@ -1087,10 +1139,6 @@ export default function ResultsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Flight Details</DialogTitle>
-            <DialogClose className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close</span>
-            </DialogClose>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
