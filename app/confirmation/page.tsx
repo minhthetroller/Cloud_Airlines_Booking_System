@@ -67,6 +67,15 @@ export default function ConfirmationPage() {
   const [bookingCreated, setBookingCreated] = useState(false)
   const [dataLoaded, setDataLoaded] = useState(false)
 
+  const splitFullName = (fullName: string) => {
+    const parts = fullName.trim().split(" ")
+    
+    return { 
+      firstName: parts[0] || "", 
+      lastName: parts[1] || "", 
+    }
+  }
+
   useEffect(() => {
     // Check if user is logged in
     const loggedIn = sessionStorage.getItem("isLoggedIn") === "true"
@@ -94,7 +103,7 @@ export default function ConfirmationPage() {
       // Otherwise generate a new one
       setBookingReference(generateBookingReference())
     }
-
+ 
     // Load flight and seat details from session storage
     const loadBookingDetails = async () => {
       let parsedDepartureFlight: SelectedFlightDetails | null = null
@@ -254,7 +263,12 @@ export default function ConfirmationPage() {
         if (contactData) {
           try {
             const parsedContact = JSON.parse(contactData)
-            setContactInfo(parsedContact)
+            const nameData = splitFullName(parsedContact.contactName || "")
+            setContactInfo({
+              ...parsedContact,
+              firstName: nameData.firstName,
+              lastName: nameData.lastName
+            })
             console.log("Loaded contact information:", parsedContact)
           } catch (err) {
             console.error("Error parsing contact information:", err)
@@ -851,7 +865,7 @@ export default function ConfirmationPage() {
       </div>
 
       <div className="container mx-auto px-4 py-6">
-        <div className="flex items-start max-w-2xl mx-auto mb-8">
+        <div className="flex items-start max-w-2xl mb-8 items-center">
           <button onClick={() => router.back()} className="mr-4 text-white hover:text-gray-300 transition-colors">
             <ArrowLeft className="h-6 w-6" />
           </button>
@@ -962,11 +976,11 @@ export default function ConfirmationPage() {
               </div>
               <div>
                 <p className="font-medium">Email</p>
-                <p>{contactInfo.email || "N/A"}</p>
+                <p>{contactInfo.contactEmail || "N/A"}</p>
               </div>
               <div>
                 <p className="font-medium">Phone</p>
-                <p>{contactInfo.phone || "N/A"}</p>
+                <p>{contactInfo.contactPhone || "N/A"}</p>
               </div>
             </div>
           ) : customerInfo ? (

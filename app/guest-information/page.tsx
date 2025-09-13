@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ChevronRight, AlertCircle, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { EnhancedDatePicker } from "@/components/ui/enhanced-date-picker"
 import supabaseClient from "@/lib/supabase"
 
 interface GuestInformation {
@@ -255,6 +256,26 @@ export default function GuestInformationPage() {
     })
 
     // Clear error for this field when user selects
+    if (errors[name as keyof GuestInformation]) {
+      setErrors((prev) => ({ ...prev, [name]: undefined }))
+    }
+  }
+
+  const handleDateChange = (name: string, date: Date | undefined) => {
+    const dateString = date ? date.toISOString().split('T')[0] : ""
+    
+    setPassengers((prev) => {
+      const updated = [...prev]
+      if (updated[currentPassengerIndex]) {
+        updated[currentPassengerIndex] = {
+          ...updated[currentPassengerIndex],
+          [name]: dateString,
+        }
+      }
+      return updated
+    })
+
+    // Clear error for this field when user selects a date
     if (errors[name as keyof GuestInformation]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }))
     }
@@ -723,14 +744,10 @@ export default function GuestInformationPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                  <Input
-                    id="dateOfBirth"
-                    name="dateOfBirth"
-                    type="date"
-                    value={passengers[currentPassengerIndex]?.dateOfBirth || ""}
-                    onChange={handleChange}
-                    placeholder="Enter date of birth"
-                    className={errors.dateOfBirth ? "border-red-500" : ""}
+                  <EnhancedDatePicker
+                    selected={passengers[currentPassengerIndex]?.dateOfBirth ? new Date(passengers[currentPassengerIndex].dateOfBirth) : undefined}
+                    onSelect={(date) => handleDateChange("dateOfBirth", date)}
+                    disabled={(date) => date > new Date()}
                   />
                   {errors.dateOfBirth && <p className="text-red-500 text-sm">{errors.dateOfBirth}</p>}
                 </div>
@@ -763,14 +780,10 @@ export default function GuestInformationPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="passportExpiry">Passport Expiry</Label>
-                  <Input
-                    id="passportExpiry"
-                    name="passportExpiry"
-                    type="date"
-                    value={passengers[currentPassengerIndex]?.passportExpiry || ""}
-                    onChange={handleChange}
-                    placeholder="Enter passport expiry"
-                    className={errors.passportExpiry ? "border-red-500" : ""}
+                  <EnhancedDatePicker
+                    selected={passengers[currentPassengerIndex]?.passportExpiry ? new Date(passengers[currentPassengerIndex].passportExpiry) : undefined}
+                    onSelect={(date) => handleDateChange("passportExpiry", date)}
+                    disabled={(date) => date < new Date()}
                   />
                   {errors.passportExpiry && <p className="text-red-500 text-sm">{errors.passportExpiry}</p>}
                 </div>

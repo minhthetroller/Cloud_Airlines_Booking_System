@@ -150,7 +150,7 @@ export default function ContactInformationPage() {
         throw new Error(updateError.message)
       }
 
-      // Redirect to confirmation page instead of payment
+      // Redirect to ticket confirmation page before payment process
       router.push("/confirmation")
     } catch (err: any) {
       console.error("Error saving contact information:", err)
