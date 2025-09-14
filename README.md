@@ -64,11 +64,17 @@ To get a local copy up and running, follow these simple steps.
     * Create a `.env.local` file in the root of the project.
     * Add your Supabase Project URL, Anon Key, and Resend API Key.
         ```env
+        ## Supabase API Keys
         NEXT_PUBLIC_SUPABASE_URL='YOUR_SUPABASE_URL'
         NEXT_PUBLIC_SUPABASE_ANON_KEY='YOUR_SUPABASE_ANON_KEY'
+
+        ## Resend API Key
         RESEND_API_KEY='YOUR_RESEND_API_KEY'
+        
+        ## Stripe API Keys
         STRIPE_SECRET_KEY='YOUR_STRIPE_SECRET_KEY'
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY='YOUR_STRIPE_PUBLISHABLE_KEY'
+        STRIPE_WEBHOOK_SECRET='YOUR_STRIPE_WEBHOOK_SECRET'
         ```
 4.  **Run the development server**
     ```sh

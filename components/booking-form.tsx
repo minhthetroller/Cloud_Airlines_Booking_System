@@ -14,7 +14,6 @@ import AirportSelector from "@/components/airport-selector"
 import PassengerModal from "@/components/passenger-modal"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
-import { useLanguage } from "@/lib/language-context"
 
 export default function BookingForm() {
   const [tripType, setTripType] = useState("round-trip")
@@ -31,7 +30,6 @@ export default function BookingForm() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { t } = useLanguage()
 
   const router = useRouter()
 
@@ -41,31 +39,21 @@ export default function BookingForm() {
 
   const getPassengerSummary = () => {
     const total = getTotalPassengers()
-
-    // Transform cabin class to match translation keys (camelCase format)
-    const travelClassKey = passengerDetails.travelClass
-      .split('-')
-      .map((part, index) => index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
-      .join('')
-
-    const classDisplay = t(travelClassKey)
-
-    // Use the appropriate translation key based on passenger count
-    const passengerText = total === 1
-      ? t("passengersSummary").replace("{count}", total.toString())
-      : t("passengersSummaryPlural").replace("{count}", total.toString())
-
-    return `${passengerText}, ${classDisplay}`
+    const classDisplay = passengerDetails.travelClass
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+    return `${total} Passenger${total !== 1 ? "s" : ""}, ${classDisplay}`
   }
 
   const handleSearch = async () => {
     if (!fromLocation || !toLocation || !departDate) {
-      setError(t("errorRequiredFields"))
+      setError("Please select departure, destination, and travel dates")
       return
     }
 
     if (tripType === "round-trip" && !returnDate) {
-      setError(t("errorReturnDate"))
+      setError("Please select a return date")
       return
     }
 
@@ -91,7 +79,7 @@ export default function BookingForm() {
       )
     } catch (err) {
       console.error("Error checking flights:", err)
-      setError(t("errorCheckFlights"))
+      setError("Failed to check flight availability")
     } finally {
       setLoading(false)
     }
@@ -104,13 +92,13 @@ export default function BookingForm() {
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="round-trip" id="round-trip" />
             <Label htmlFor="round-trip" className="text-black">
-              {t("roundTrip")}
+              Round Trip
             </Label>
           </div>
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="one-way" id="one-way" />
             <Label htmlFor="one-way" className="text-black">
-              {t("oneWay")}
+              One Way
             </Label>
           </div>
         </RadioGroup>
@@ -126,24 +114,24 @@ export default function BookingForm() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <AirportSelector
           id="from-location"
-          label={t("from")}
+          label="From"
           value={fromLocation}
           onChange={setFromLocation}
-          placeholder={t("selectDeparture")}
+          placeholder="Select departure"
           excludeAirport={toLocation}
         />
 
         <AirportSelector
           id="to-location"
-          label={t("to")}
+          label="To"
           value={toLocation}
           onChange={setToLocation}
-          placeholder={t("selectDestination")}
+          placeholder="Select destination"
           excludeAirport={fromLocation}
         />
 
         <div>
-          <Label className="mb-2 block text-sm font-medium text-black">{t("depart")}</Label>
+          <Label className="mb-2 block text-sm font-medium text-black">Depart</Label>
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -154,10 +142,10 @@ export default function BookingForm() {
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {departDate ? format(departDate, "PPP") : <span>{t("selectDate")}</span>}
+                {departDate ? format(departDate, "dd/MM/yyyy") : <span>Select date</span>}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            <PopoverContent className="w-full min-w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] p-0">
               <Calendar mode="single" selected={departDate} onSelect={setDepartDate} initialFocus />
             </PopoverContent>
           </Popover>
@@ -165,7 +153,7 @@ export default function BookingForm() {
 
         {tripType === "round-trip" && (
           <div>
-            <Label className="mb-2 block text-sm font-medium text-black">{t("return")}</Label>
+            <Label className="mb-2 block text-sm font-medium text-black">Return</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -176,10 +164,10 @@ export default function BookingForm() {
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {returnDate ? format(returnDate, "PPP") : <span>{t("selectDate")}</span>}
+                  {returnDate ? format(returnDate, "dd/MM/yyyy") : <span>Select date</span>}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
+              <PopoverContent className="w-full min-w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] p-0">
                 <Calendar
                   mode="single"
                   selected={returnDate}
@@ -195,7 +183,7 @@ export default function BookingForm() {
 
       <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <Label className="mb-2 block text-sm font-medium text-black">{t("passengersAndClass")}</Label>
+          <Label className="mb-2 block text-sm font-medium text-black">Passengers & Class</Label>
           <Button
             variant="outline"
             className="w-full justify-start border-gray-300 bg-white text-left font-normal text-black hover:bg-gray-50 md:w-auto"
@@ -216,7 +204,7 @@ export default function BookingForm() {
         </div>
 
         <Button className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90" size="lg" onClick={handleSearch} disabled={loading}>
-          {loading ? t("searching") : t("searchFlights")}
+          {loading ? "Searching..." : "Search Flights"}
         </Button>
       </div>
     </div>
