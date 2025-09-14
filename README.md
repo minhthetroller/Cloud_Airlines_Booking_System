@@ -45,8 +45,10 @@ To get a local copy up and running, follow these simple steps.
 
 * Node.js (v18 or later)
 * npm or yarn
+* pnpm
 * A Supabase account and project
 * A Resend account and API key
+* A Stripe sandbox account and API keys
 
 ### Installation
 
@@ -65,10 +67,12 @@ To get a local copy up and running, follow these simple steps.
         NEXT_PUBLIC_SUPABASE_URL='YOUR_SUPABASE_URL'
         NEXT_PUBLIC_SUPABASE_ANON_KEY='YOUR_SUPABASE_ANON_KEY'
         RESEND_API_KEY='YOUR_RESEND_API_KEY'
+        STRIPE_SECRET_KEY='YOUR_STRIPE_SECRET_KEY'
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY='YOUR_STRIPE_PUBLISHABLE_KEY'
         ```
 4.  **Run the development server**
     ```sh
-    npm run dev
+    pnpm run dev
     ```
     Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
