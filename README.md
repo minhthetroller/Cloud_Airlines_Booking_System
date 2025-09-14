@@ -70,7 +70,7 @@ To get a local copy up and running, follow these simple steps.
 
         ## Resend API Key
         RESEND_API_KEY='YOUR_RESEND_API_KEY'
-
+        
         ## Stripe API Keys
         STRIPE_SECRET_KEY='YOUR_STRIPE_SECRET_KEY'
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY='YOUR_STRIPE_PUBLISHABLE_KEY'
