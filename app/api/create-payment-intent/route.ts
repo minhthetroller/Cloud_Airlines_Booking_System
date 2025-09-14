@@ -1,26 +1,19 @@
-import { stripe } from "@/lib/stripe";
 import { NextRequest, NextResponse } from "next/server";
+import { createPaymentIntent } from "@/app/actions/stripe";
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const amount = Number(formData.get("amount")) || 1000; // Default amount in cents
-
-    // Create a PaymentIntent with the order amount and currency
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount,
-      currency: "usd",
-      metadata: {
-        bookingId: formData.get("bookingId") as string || "",
-        paymentId: formData.get("paymentId") as string || "",
-      },
-    });
+    
+    // Use the action function which now creates a checkout session for card-only payments
+    const result = await createPaymentIntent(formData);
 
     return NextResponse.json({
-      client_secret: paymentIntent.client_secret,
+      client_secret: result.client_secret,
+      url: result.url,
     });
   } catch (error: any) {
-    console.error("Error creating payment intent:", error);
+    console.error("Error creating checkout session:", error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }

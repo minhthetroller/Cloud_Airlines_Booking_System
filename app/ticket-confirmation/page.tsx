@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Check, ArrowLeft, Home } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -37,12 +37,98 @@ interface Ticket {
 
 export default function TicketConfirmationPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
+  const [paymentProcessing, setPaymentProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingId, setBookingId] = useState<string | null>(null)
   const [bookingReference, setBookingReference] = useState<string | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [contactEmail, setContactEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Check if we're coming from Stripe
+    const sessionId = searchParams.get('session_id');
+    const paymentStatus = searchParams.get('payment_status');
+
+    if (sessionId && paymentStatus === 'success') {
+      console.log('Payment successful via Stripe, session:', sessionId);
+      setPaymentProcessing(true);
+      // Start polling for payment completion
+      pollPaymentStatus();
+    }
+
+    // Get booking information from session storage (works for both flows)
+    const storedBookingId = sessionStorage.getItem("bookingId");
+    const storedBookingReference = sessionStorage.getItem("bookingReference");
+    const storedContactEmail = sessionStorage.getItem("contactEmail");
+
+    if (storedBookingId) {
+      setBookingId(storedBookingId);
+      setBookingReference(storedBookingReference);
+      setContactEmail(storedContactEmail);
+      
+      // If not coming from Stripe, fetch tickets immediately
+      if (!sessionId) {
+        fetchTicketDetails();
+      }
+    } else {
+      setError("No booking information found. Please check your booking reference.");
+      setLoading(false);
+    }
+  }, [searchParams]);
+
+  // Function to poll payment status when coming from Stripe
+  const pollPaymentStatus = async () => {
+    const maxAttempts = 30; // Poll for up to 30 seconds
+    let attempts = 0;
+    
+    const checkPaymentStatus = async () => {
+      try {
+        const storedPaymentId = sessionStorage.getItem("paymentId");
+        if (!storedPaymentId) {
+          console.log("No payment ID found, fetching tickets anyway");
+          fetchTicketDetails();
+          return;
+        }
+
+        const { data: paymentData, error } = await supabaseClient
+          .from("payments")
+          .select("paymentstatus")
+          .eq("paymentid", storedPaymentId)
+          .single();
+
+        if (error) {
+          console.error("Error checking payment status:", error);
+          fetchTicketDetails(); // Fallback to fetching tickets
+          return;
+        }
+
+        if (paymentData.paymentstatus === "Completed") {
+          console.log("✅ Payment confirmed as completed, fetching tickets");
+          setPaymentProcessing(false);
+          fetchTicketDetails();
+          return;
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`Waiting for payment completion... (${attempts}/${maxAttempts})`);
+          setTimeout(checkPaymentStatus, 1000); // Check again in 1 second
+        } else {
+          console.log("Payment status polling timeout, fetching tickets anyway");
+          setPaymentProcessing(false);
+          fetchTicketDetails();
+        }
+      } catch (err) {
+        console.error("Error in payment status polling:", err);
+        setPaymentProcessing(false);
+        fetchTicketDetails(); // Fallback
+      }
+    };
+
+    checkPaymentStatus();
+  };
 
   const fetchTicketDetails = async () => {
     try {
@@ -51,10 +137,7 @@ export default function TicketConfirmationPage() {
       // Get booking ID from session storage
       const storedBookingId = sessionStorage.getItem("bookingId")
       const storedBookingReference = sessionStorage.getItem("bookingReference")
-      const storedContactEmail =
-        sessionStorage.getItem("contactEmail") ||
-        sessionStorage.getItem("userEmail") ||
-        sessionStorage.getItem("guestEmail")
+      const contactDetails = sessionStorage.getItem("contactInformation") || null
 
       if (!storedBookingId) {
         throw new Error("Booking ID not found")
@@ -62,7 +145,7 @@ export default function TicketConfirmationPage() {
 
       setBookingId(storedBookingId)
       setBookingReference(storedBookingReference)
-      setContactEmail(storedContactEmail)
+      setContactEmail(JSON.parse(contactDetails || "null")?.contactEmail || null)
 
       console.log("Fetching tickets for booking ID:", storedBookingId)
 
@@ -324,12 +407,20 @@ export default function TicketConfirmationPage() {
     return `${prefix}${randomDigits}`
   }
 
-  useEffect(() => {
-    fetchTicketDetails()
-  }, [])
-
   const handleReturnHome = () => {
     router.push("/")
+  }
+
+  if (paymentProcessing) {
+    return (
+      <div className="min-h-screen bg-[#0f2d3c] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-white mb-2">Processing Payment</h2>
+          <p className="text-gray-300">Please wait while we confirm your payment...</p>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {

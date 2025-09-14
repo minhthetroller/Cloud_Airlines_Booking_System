@@ -972,7 +972,7 @@ export default function ConfirmationPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="font-medium">Name</p>
-                <p>{`${contactInfo.firstName || ""} ${contactInfo.lastName || ""}`}</p>
+                <p>{`${contactInfo.contactName || ""}`}</p>
               </div>
               <div>
                 <p className="font-medium">Email</p>

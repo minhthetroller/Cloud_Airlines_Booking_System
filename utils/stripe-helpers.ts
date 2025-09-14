@@ -41,6 +41,11 @@ export function formatVNDForStripe(amountVND: number): number {
   return Math.round(amountUSD * 100); // Convert to cents for Stripe
 }
 
+// Updated function to handle VND amounts properly
+export function formatAmountForStripeFromVND(amountVND: number): number {
+  return formatVNDForStripe(amountVND);
+}
+
 // Format VND amount for display
 export function formatVNDForDisplay(amount: number): string {
   return new Intl.NumberFormat("vi-VN").format(amount) + " VND";
