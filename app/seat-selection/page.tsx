@@ -963,7 +963,7 @@ export default function SeatSelectionPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">Seat Selection</h1>
             {isRoundTrip && (
-              <Button variant="outline" onClick={handleSwitchFlight} className="border-white text-white">
+              <Button variant="outline" onClick={handleSwitchFlight} className="bg-white text-[#0f2d3c] border-white hover:bg-gray-200">
                 Switch to {activeFlightType === "departure" ? "Return" : "Departure"} Flight
               </Button>
             )}
