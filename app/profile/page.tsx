@@ -10,12 +10,12 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Edit2, Check, X, Calendar, Plane } from "lucide-react"
-import supabaseClient from "@/lib/supabase"
 import { format } from "date-fns"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { useLanguage } from "@/lib/language-context"
 import TierBenefitsModal from "@/components/tier-benefits-modal"
+import axios from "axios"
 
 interface UserProfile {
   id: string
@@ -96,108 +96,23 @@ export default function ProfilePage() {
     setError(null)
 
     try {
-      // Get user record from users table
-      const { data: userRecord, error: userRecordError } = await supabaseClient
-        .from("users")
-        .select("*")
-        .eq("username", email)
-        .single()
+      const response = await axios.get(`/api/profile?email=${encodeURIComponent(email)}`)
+      
+      const data = response.data
 
-      if (userRecordError) throw userRecordError
+      setUser(data.user)
+      setCustomerDetails(data.customerDetails)
+      setFormData(data.customerDetails)
+      setBookings(data.recentBookings)
 
-      // Get customer details
-      const { data: customerData, error: customerError } = await supabaseClient
-        .from("customers")
-        .select("*")
-        .eq("customerid", userRecord.customerid)
-        .single()
-
-      if (customerError) throw customerError
-
-      // Store user ID in session storage for later use
-      sessionStorage.setItem("userId", userRecord.userid)
-      sessionStorage.setItem("customerId", userRecord.customerid)
-
-      // Get bookings for this user
-      const { data: bookingsData, error: bookingsError } = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .eq("userid", userRecord.userid)
-        .order("bookingdatetime", { ascending: false })
-
-      if (bookingsError) {
-        console.error("Error fetching bookings:", bookingsError)
-      }
-
-      // Determine tier based on points
-      let tier = "Stratus"
-      if (userRecord.pointsavailable > 10000) {
-        tier = "Cirrus"
-      } else if (userRecord.pointsavailable > 5000) {
-        tier = "Altostratus"
-      }
-
-      // Format user profile data
-      setUser({
-        id: userRecord.userid,
-        email: email,
-        firstName: customerData.firstname,
-        lastName: customerData.lastname,
-        title: customerData.pronoun,
-        points: userRecord.pointsavailable,
-        tier: tier,
-        cosmileId: `${1000000 + Number.parseInt(userRecord.userid)}`,
-        lastLogin: format(new Date(), "MMM dd, yyyy HH:mm (OOOO)"),
-      })
-
-      setCustomerDetails(customerData)
-      setFormData(customerData)
-
-      // Process bookings data
-      if (bookingsData && bookingsData.length > 0) {
-        const processedBookings = await Promise.all(
-          bookingsData.map(async (booking: any) => {
-            // Get tickets for this booking
-            const { data: ticketsData, error: ticketsError } = await supabaseClient
-              .from("tickets")
-              .select("*, flights(*)")
-              .eq("bookingid", booking.bookingid)
-
-            if (ticketsError) {
-              console.error("Error fetching tickets:", ticketsError)
-              return null
-            }
-
-            if (!ticketsData || ticketsData.length === 0) {
-              return null
-            }
-
-            // Use the first ticket's flight data
-            const ticket = ticketsData[0]
-            const flight = ticket.flights
-
-            return {
-              id: booking.bookingid,
-              reference: booking.bookingreference,
-              flightNumber: flight?.flightnumber || "Unknown",
-              departureAirport: flight?.departureairportcode || "Unknown",
-              arrivalAirport: flight?.arrivalairportcode || "Unknown",
-              departureDate: flight?.departuredatetime
-                ? format(new Date(flight.departuredatetime), "MMM dd, yyyy")
-                : "Unknown",
-              status: booking.bookingstatus || "Pending",
-              price: booking.totalprice || 0,
-            }
-          }),
-        )
-
-        // Filter out null values
-        const validBookings = processedBookings.filter((booking) => booking !== null)
-        setBookings(validBookings as BookingHistory[])
+      // Store IDs in session storage for later use
+      if (data.ids) {
+        sessionStorage.setItem("userId", data.ids.userId)
+        sessionStorage.setItem("customerId", data.ids.customerId)
       }
     } catch (err: any) {
       console.error("Error fetching user data:", err)
-      setError("Failed to load profile data. Please try again.")
+      setError(err.response?.data?.error || "Failed to load profile data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -222,21 +137,7 @@ export default function ProfilePage() {
     try {
       // Check if identity card number is already taken by another customer
       if (formData.identitycardnumber && formData.identitycardnumber !== customerDetails?.identitycardnumber) {
-        const { data: existingCustomer, error: checkError } = await supabaseClient
-          .from("customers")
-          .select("customerid")
-          .eq("identitycardnumber", formData.identitycardnumber)
-          .neq("customerid", sessionStorage.getItem("customerId"))
-          .single()
-
-        if (checkError && checkError.code !== "PGRST116") {
-          throw checkError
-        }
-
-        if (existingCustomer) {
-          setUpdateError("This identity card number is already registered to another account.")
-          return
-        }
+        // We'll handle this validation on the server side
       }
 
       // Build update object with only changed fields
@@ -256,22 +157,10 @@ export default function ProfilePage() {
 
       // Only update if there are changes
       if (Object.keys(updateData).length > 0) {
-        const { error: updateError } = await supabaseClient
-          .from("customers")
-          .update(updateData)
-          .eq("customerid", sessionStorage.getItem("customerId"))
-
-        if (updateError) {
-          if (updateError.code === "23505") {
-            if (updateError.message.includes("identitycardnumber")) {
-              setUpdateError("This identity card number is already registered to another account.")
-            } else {
-              setUpdateError("A unique constraint violation occurred. Please check your information.")
-            }
-            return
-          }
-          throw updateError
-        }
+        const response = await axios.put('/api/profile', {
+          userId: sessionStorage.getItem("userId"),
+          customerDetails: updateData,
+        })
       }
 
       setCustomerDetails(formData)
@@ -292,14 +181,10 @@ export default function ProfilePage() {
       })
     } catch (err: any) {
       console.error("Error updating profile:", err)
-      if (err.code === "23505") {
-        if (err.message.includes("identitycardnumber")) {
-          setUpdateError("This identity card number is already registered to another account.")
-        } else {
-          setUpdateError("A unique constraint violation occurred. Please check your information.")
-        }
+      if (err.response?.data?.error?.includes("identitycardnumber")) {
+        setUpdateError("This identity card number is already registered to another account.")
       } else {
-        setUpdateError(err.message || "Failed to update profile. Please try again.")
+        setUpdateError(err.response?.data?.error || err.message || "Failed to update profile. Please try again.")
       }
     } finally {
       setUpdateLoading(false)
@@ -331,30 +216,16 @@ export default function ProfilePage() {
   const fetchPointHistory = async () => {
     setPointHistoryLoading(true)
     try {
-      const { data: bookingsData, error: bookingsError } = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .eq("userid", sessionStorage.getItem("userId"))
-        .order("bookingdatetime", { ascending: false })
-
-      if (bookingsError) {
-        console.error("Error fetching bookings:", bookingsError)
+      if (!user?.email) {
+        console.error("User email not found")
         return
       }
 
-      const pointHistoryData = bookingsData.map((booking) => {
-        const points = Math.floor(booking.totalprice / 500000)
-        return {
-          id: booking.bookingid,
-          date: booking.bookingdatetime,
-          description: `Flight booking - ${booking.bookingreference}`,
-          points: points,
-          type: "earned",
-        }
-      })
-
-      setPointHistory(pointHistoryData)
-    } catch (error) {
+      const response = await axios.get(`/api/profile/points?email=${encodeURIComponent(user.email)}`)
+      
+      const data = response.data
+      setPointHistory(data.pointHistory)
+    } catch (error: any) {
       console.error("Error fetching point history:", error)
     } finally {
       setPointHistoryLoading(false)
@@ -1113,7 +984,9 @@ export default function ProfilePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {bookings.map((booking) => (
+                        {bookings
+                          .sort((a, b) => new Date(b.departureDate).getTime() - new Date(a.departureDate).getTime())
+                          .map((booking) => (
                           <tr key={booking.id} className="border-b border-[#1a3a4a]">
                             <td className="py-4 px-4">
                               <div className="flex items-center">

@@ -1,7 +1,8 @@
 import type { Stripe } from "stripe";
 
 import { NextResponse } from "next/server";
-import supabaseClient from "@/lib/supabase-client";
+import supabaseClient from "@/lib/supabase/supabaseClient"
+import axios from "axios"
 
 import { stripe } from "@/lib/stripe";
 
@@ -43,14 +44,22 @@ async function sendConfirmationEmail(bookingId: string, contactEmail: string) {
       return;
     }
 
-    console.log(`✅ Confirmation email would be sent to ${contactEmail} for booking ${bookingId}`);
-    console.log(`Booking has ${ticketsData.length} tickets`);
+    // Call the send-ticket-confirmation API
+    const response = await axios.post(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/send-ticket-confirmation`, {
+      email: contactEmail,
+      booking: bookingData,
+      tickets: ticketsData,
+    })
+
+    const result = response.data
+    console.log(`✅ Confirmation email sent successfully to ${contactEmail} for booking ${bookingId}`)
+    console.log(`Email API response:`, result);
     
-    // For now, just log success. You can implement actual email sending here
-    // using Resend or another email service
-    
-  } catch (err) {
-    console.error("Error in sendConfirmationEmail:", err);
+  } catch (err: any) {
+    console.error("Error in sendConfirmationEmail:", err)
+    if (err.response) {
+      console.error("Error sending confirmation email:", err.response.data?.error);
+    }
   }
 }
 

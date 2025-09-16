@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Check, Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import { sha256 } from "js-sha256"
 
 export default function SetPasswordPage() {

@@ -8,10 +8,9 @@ import { Button } from "@/components/ui/button"
 import { AlertCircle, CreditCard, Building, ArrowLeft, Clock, Award } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import { formatVNDForDisplay } from "@/utils/stripe-helpers"
+import axios from "axios"
 
 export default function PaymentPage() {
   const router = useRouter()
@@ -214,21 +213,20 @@ export default function PaymentPage() {
       formData.append("paymentId", createdPaymentId.toString());
       formData.append("uiMode", "hosted"); // Use hosted checkout
 
-      const response = await fetch("/api/create-payment-intent", {
-        method: "POST",
-        body: formData,
+      const response = await axios.post("/api/create-payment-intent", formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
 
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
+      if (response.data.error) {
+        throw new Error(response.data.error);
       }
       
-      if (data.url) {
+      if (response.data.url) {
         // Redirect to Stripe Checkout - user will leave this page
         // Don't worry about loading state since we're navigating away
-        window.location.href = data.url;
+        window.location.href = response.data.url;
         // Return without throwing to prevent setting loading to false
         return;
       } else {

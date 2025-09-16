@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import axios from "axios"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -35,32 +36,18 @@ export default function RegisterPage() {
     // Check email uniqueness
     setIsCheckingEmail(true)
     try {
-      const response = await fetch("/api/check-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: email.toLowerCase() }),
-      })
+      const response = await axios.post("/api/check-email", {
+        email: email.toLowerCase()
+      });
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("API Error:", errorData)
-        setError("Unable to verify email. Please check your connection and try again.")
-        setIsCheckingEmail(false)
-        return
-      }
-
-      const result = await response.json()
-
-      if (result.error) {
-        console.error("Server Error:", result.error)
+      if (response.data.error) {
+        console.error("Server Error:", response.data.error)
         setError("Unable to verify email. Please try again later.")
         setIsCheckingEmail(false)
         return
       }
 
-      if (result.exists) {
+      if (response.data.exists) {
         setError("This email is already registered. Please use a different email or try logging in.")
         setIsCheckingEmail(false)
         return

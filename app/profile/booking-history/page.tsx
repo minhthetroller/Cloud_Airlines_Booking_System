@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { AlertCircle, Calendar, Plane, ArrowLeft, ChevronDown, ChevronUp, X, AlertTriangle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import {
@@ -17,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import axios from "axios"
 
 interface Booking {
   bookingid: string
@@ -65,79 +65,18 @@ export default function BookingHistoryPage() {
       setLoading(true)
       setError(null)
 
-      // Get user ID from auth context
+      // Get user email from auth context
       if (!user?.email) {
         throw new Error("User email not found")
       }
 
-      // Get user record from users table
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("userid")
-        .eq("username", user.email)
-        .single()
-
-      if (userError) {
-        throw new Error(`Error fetching user data: ${userError.message}`)
-      }
-
-      // Get bookings for this user
-      const { data: bookingsData, error: bookingsError } = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .eq("userid", userData.userid)
-        .order("bookingdatetime", { ascending: false })
-
-      if (bookingsError) {
-        throw new Error(`Error fetching bookings: ${bookingsError.message}`)
-      }
-
-      // For each booking, get the associated flights
-      const bookingsWithFlights = await Promise.all(
-        bookingsData.map(async (booking: any) => {
-          // Get tickets for this booking
-          const { data: ticketsData, error: ticketsError } = await supabaseClient
-            .from("tickets")
-            .select("flightid")
-            .eq("bookingid", booking.bookingid)
-
-          if (ticketsError) {
-            console.error(`Error fetching tickets for booking ${booking.bookingid}:`, ticketsError)
-            return {
-              ...booking,
-              flights: [],
-              expanded: false,
-            }
-          }
-
-          // Get flight details for each ticket
-          const flightIds = ticketsData.map((ticket: any) => ticket.flightid)
-          const { data: flightsData, error: flightsError } = await supabaseClient
-            .from("flights")
-            .select("*")
-            .in("flightid", flightIds)
-
-          if (flightsError) {
-            console.error(`Error fetching flights for booking ${booking.bookingid}:`, flightsError)
-            return {
-              ...booking,
-              flights: [],
-              expanded: false,
-            }
-          }
-
-          return {
-            ...booking,
-            flights: flightsData,
-            expanded: false,
-          }
-        }),
-      )
-
-      setBookings(bookingsWithFlights)
+      const response = await axios.get(`/api/profile/booking-history?email=${encodeURIComponent(user.email)}`)
+      
+      const data = response.data
+      setBookings(data.bookings)
     } catch (err: any) {
       console.error("Error fetching booking history:", err)
-      setError(err.message || "Failed to load booking history")
+      setError(err.response?.data?.error || err.message || "Failed to load booking history")
     } finally {
       setLoading(false)
     }
@@ -153,37 +92,14 @@ export default function BookingHistoryPage() {
     // If expanding and we don't have ticket details yet, fetch them
     if (booking.expanded && (!booking.tickets || !booking.payment)) {
       try {
-        // Fetch tickets with passenger and seat details
-        const { data: ticketsData, error: ticketsError } = await supabaseClient
-          .from("tickets")
-          .select(`
-            *,
-            flights(*),
-            passengers(*, customers(*)),
-            seats(*)
-          `)
-          .eq("bookingid", booking.bookingid)
+        const response = await axios.post('/api/profile/booking-history', {
+          bookingId: booking.bookingid,
+        })
 
-        if (ticketsError) {
-          console.error("Error fetching ticket details:", ticketsError)
-        } else {
-          booking.tickets = ticketsData
-        }
-
-        // Fetch payment information
-        const { data: paymentData, error: paymentError } = await supabaseClient
-          .from("payments")
-          .select("*")
-          .eq("bookingid", booking.bookingid)
-          .order("paymentdatetime", { ascending: false })
-          .limit(1)
-
-        if (paymentError) {
-          console.error("Error fetching payment details:", paymentError)
-        } else {
-          booking.payment = paymentData && paymentData.length > 0 ? paymentData[0] : null
-        }
-      } catch (err) {
+        const data = response.data
+        booking.tickets = data.tickets
+        booking.payment = data.payment
+      } catch (err: any) {
         console.error("Error fetching booking details:", err)
       }
     }
@@ -205,19 +121,11 @@ export default function BookingHistoryPage() {
     setCancelError(null)
 
     try {
-      // 1. Update booking status to Cancelled
-      const { error: bookingUpdateError } = await supabaseClient
-        .from("bookings")
-        .update({ bookingstatus: "Cancelled" })
-        .eq("bookingid", bookingToCancel)
+      const response = await axios.put('/api/profile/booking-history', {
+        bookingId: bookingToCancel,
+      })
 
-      if (bookingUpdateError) throw new Error(`Failed to cancel booking: ${bookingUpdateError.message}`)
-
-      // 3. Update the flights status if needed (optional)
-      // This would depend on your business logic - we're not updating flight status here
-      // as multiple bookings might be on the same flight
-
-      // 4. Update the local state
+      // Update the local state
       setBookings((prevBookings) =>
         prevBookings.map((booking) =>
           booking.bookingid === bookingToCancel ? { ...booking, bookingstatus: "Cancelled" } : booking,
@@ -233,7 +141,7 @@ export default function BookingHistoryPage() {
       }, 2000)
     } catch (err: any) {
       console.error("Error cancelling booking:", err)
-      setCancelError(err.message || "Failed to cancel booking. Please try again.")
+      setCancelError(err.response?.data?.error || err.message || "Failed to cancel booking. Please try again.")
     } finally {
       setCancelLoading(false)
     }

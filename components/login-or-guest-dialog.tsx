@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase-client"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import { sha256 } from "js-sha256"
 
 interface LoginOrGuestDialogProps {

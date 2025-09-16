@@ -12,10 +12,11 @@ import { Eye, EyeOff, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import { useRouter } from "next/navigation"
 import { v4 as uuidv4 } from "uuid"
 import { sha256 } from "js-sha256"
+import axios from "axios"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -204,20 +205,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       // }
 
       // Send reset email
-      const response = await fetch("/api/send-password-reset", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: forgotPasswordEmail,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to send reset email")
-      }
+      const response = await axios.post("/api/send-password-reset", {
+        email: forgotPasswordEmail,
+      });
 
       setForgotPasswordMessage("Password reset email sent! Please check your inbox.")
       setForgotPasswordEmail("")
