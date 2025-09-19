@@ -8,7 +8,7 @@ import BookingForm from "@/components/booking-form"
 import LoginModal from "@/components/login-modal"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth } from "@/lib/supabase/auth-context"
 import { useLanguage } from "@/lib/language-context"
 import LanguageSelector from "@/components/language-selector"
 

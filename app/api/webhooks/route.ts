@@ -1,7 +1,7 @@
 import type { Stripe } from "stripe";
 
 import { NextResponse } from "next/server";
-import supabaseClient from "@/lib/supabase-client";
+import supabaseClient from "@/lib/supabase/supabaseClient";
 
 import { stripe } from "@/lib/stripe";
 

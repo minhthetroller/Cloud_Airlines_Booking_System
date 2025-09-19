@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase-client"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import SeatMap from "@/components/seat-map"
 import LoginOrGuestDialog from "@/components/login-or-guest-dialog"
 

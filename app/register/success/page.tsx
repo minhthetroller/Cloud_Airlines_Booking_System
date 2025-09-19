@@ -5,18 +5,23 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { CheckCircle } from "lucide-react"
+import { useRegistration } from "@/lib/registration-context"
 
 export default function SuccessPage() {
   const router = useRouter()
+  const { clearRegistrationData } = useRegistration()
 
-  // Redirect to home after 5 seconds
+  // Clear registration data and redirect to home after 5 seconds
   useEffect(() => {
+    // Clear the registration data since registration is complete
+    clearRegistrationData()
+
     const timer = setTimeout(() => {
       router.push("/")
     }, 5000)
 
     return () => clearTimeout(timer)
-  }, [router])
+  }, [router, clearRegistrationData])
 
   return (
     <div className="min-h-screen bg-[#0f2d3c] flex flex-col items-center justify-center py-12 px-4">
