@@ -6,7 +6,7 @@ const resend = new Resend(process.env.RESEND_API_KEY!)
 
 export async function POST(request: Request) {
   try {
-    const { email, token, baseUrl } = await request.json()
+    const { email, token, baseUrl, userId } = await request.json()
 
     if (!email || !token) {
       return NextResponse.json({ error: "Email and token are required" }, { status: 400 })
@@ -15,9 +15,14 @@ export async function POST(request: Request) {
     // Use the provided baseUrl or fall back to the environment variable
     const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://www.cloud-airlines.space/"
 
-    // Create the verification URL with the correct base URL and include email parameter
+    // Create the verification URL with the correct base URL and include email and userId parameters
     // Make sure the URL doesn't have double slashes
-    const verificationUrl = `${appUrl.replace(/\/$/, "")}/register/set-password?token=${token}&email=${encodeURIComponent(email)}`
+    let verificationUrl = `${appUrl.replace(/\/$/, "")}/register/set-password?token=${token}&email=${encodeURIComponent(email)}`
+    
+    // Add userId to the URL if it's provided
+    if (userId) {
+      verificationUrl += `&userId=${userId}`
+    }
 
     // Create a simple HTML email template
     const htmlContent = `

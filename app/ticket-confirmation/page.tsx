@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Check, ArrowLeft, Home } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 
 interface Ticket {
   ticketid: string

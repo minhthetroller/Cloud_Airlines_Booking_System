@@ -1,9 +1,10 @@
 import type { Stripe } from "stripe";
 
 import { NextResponse } from "next/server";
-import supabaseClient from "@/lib/supabase-client";
-
-import { stripe } from "@/lib/stripe";
+import supabaseClient from "@/lib/supabase/supabaseClient";
+import { BookingService } from "@/lib/services/booking-service";
+import { BookingCleanupService } from "@/lib/services/booking-cleanup";
+import { stripe } from "@/lib/stripe/stripe";
 
 // Function to send confirmation email
 async function sendConfirmationEmail(bookingId: string, contactEmail: string) {
@@ -96,6 +97,9 @@ export async function POST(req: Request) {
           if (data.payment_status === "paid") {
             const bookingId = data.metadata?.bookingId;
             const paymentId = data.metadata?.paymentId;
+            const sessionId = data.metadata?.sessionId;
+            const userId = data.metadata?.userId;
+            const bookingReference = data.metadata?.bookingReference;
             const transactionId = data.payment_intent as string;
             
             if (bookingId && paymentId) {
@@ -119,32 +123,28 @@ export async function POST(req: Request) {
                   return NextResponse.json({ message: "Already processed" }, { status: 200 });
                 }
 
-                // Update payment record to completed
-                const { error: paymentError } = await supabaseClient
-                  .from("payments")
-                  .update({
-                    paymentmethod: "Credit Card",
-                    paymentstatus: "Completed",
-                    transactionid: transactionId,
-                  })
-                  .eq("paymentid", paymentId);
+                // Use BookingService to confirm payment
+                const confirmationResult = await BookingService.confirmBookingPayment({
+                  bookingId: parseInt(bookingId),
+                  paymentIntentId: transactionId,
+                  amountPaid: (data.amount_total || 0) / 100, // Convert from cents
+                  paymentMethod: "Credit Card"
+                });
 
-                if (paymentError) {
-                  console.error("Error updating payment:", paymentError);
-                  return NextResponse.json({ message: "Payment update failed" }, { status: 500 });
+                if (!confirmationResult.success) {
+                  console.error("Error confirming payment:", confirmationResult.error);
+                  return NextResponse.json({ 
+                    message: confirmationResult.message || "Payment confirmation failed" 
+                  }, { status: 500 });
                 }
 
-                // Update booking status to Confirmed
-                const { error: bookingStatusError } = await supabaseClient
-                  .from("bookings")
-                  .update({
-                    bookingstatus: "Confirmed",
-                  })
-                  .eq("bookingid", bookingId);
-
-                if (bookingStatusError) {
-                  console.error("Error updating booking status:", bookingStatusError);
-                  return NextResponse.json({ message: "Booking status update failed" }, { status: 500 });
+                // Handle Redis cleanup for successful booking
+                if (userId && sessionId && bookingReference) {
+                  await BookingCleanupService.handleBookingSuccess(
+                    userId,
+                    sessionId,
+                    bookingReference
+                  );
                 }
 
                 // Get booking details for email and points
@@ -191,6 +191,17 @@ export async function POST(req: Request) {
                 console.log(`✅ Payment completed for booking ${bookingId}`);
               } catch (error) {
                 console.error("Error processing payment completion:", error);
+                
+                // Handle payment failure cleanup
+                if (userId && sessionId && bookingReference) {
+                  await BookingCleanupService.handlePaymentFailure(
+                    userId,
+                    sessionId,
+                    bookingReference,
+                    parseInt(bookingId)
+                  );
+                }
+                
                 return NextResponse.json({ message: "Payment processing failed" }, { status: 500 });
               }
             }
@@ -199,6 +210,21 @@ export async function POST(req: Request) {
         case "payment_intent.payment_failed":
           data = event.data.object as Stripe.PaymentIntent;
           console.log(`❌ Payment failed: ${data.last_payment_error?.message}`);
+          
+          // Handle payment failure cleanup
+          const failedBookingId = data.metadata?.bookingId;
+          const failedUserId = data.metadata?.userId;
+          const failedSessionId = data.metadata?.sessionId;
+          const failedBookingReference = data.metadata?.bookingReference;
+          
+          if (failedUserId && failedSessionId && failedBookingReference) {
+            await BookingCleanupService.handlePaymentFailure(
+              failedUserId,
+              failedSessionId,
+              failedBookingReference,
+              failedBookingId ? parseInt(failedBookingId) : undefined
+            );
+          }
           break;
         case "payment_intent.succeeded":
           data = event.data.object as Stripe.PaymentIntent;

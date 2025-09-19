@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import { formatVNDForDisplay } from "@/utils/stripe-helpers"
 
 export default function PaymentPage() {
@@ -213,6 +213,14 @@ export default function PaymentPage() {
       formData.append("bookingId", bookingId);
       formData.append("paymentId", createdPaymentId.toString());
       formData.append("uiMode", "hosted"); // Use hosted checkout
+      
+      // Add session metadata for Redis cleanup
+      if (userId) formData.append("userId", userId);
+      if (bookingReference) formData.append("bookingReference", bookingReference);
+      
+      // Generate a session ID for cleanup tracking
+      const sessionId = `payment_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      formData.append("sessionId", sessionId);
 
       const response = await fetch("/api/create-payment-intent", {
         method: "POST",

@@ -32,8 +32,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 // Note: When using this dialog for authentication purposes,
 // always check if the user is already logged in before opening the dialog.
 // Example:
-// const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true";
-// if (isLoggedIn) {
+// const { isAuthenticated } = useAuth();
+// if (isAuthenticated) {
 //   // Skip dialog and proceed directly
 // } else {
 //   // Show dialog

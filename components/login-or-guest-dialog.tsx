@@ -9,8 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase-client"
-import { sha256 } from "js-sha256"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 
 interface LoginOrGuestDialogProps {
   open: boolean
@@ -38,56 +37,19 @@ export default function LoginOrGuestDialog({
     setError(null)
 
     try {
-      // Check if the user exists and is verified in our database
-      const { data: userCheck, error: userCheckError } = await supabaseClient
-        .from("users")
-        .select("accountstatus, passwordhash, customerid, userid")
-        .eq("username", email)
-        .single()
-
-      if (userCheckError) {
-        throw new Error("Invalid email or password")
-      }
-
-      // Check if the account is verified
-      if (userCheck.accountstatus !== "verified") {
-        throw new Error("Please verify your account before logging in")
-      }
-
-      // Hash the input password using sha256
-      const hashedPassword = sha256(password)
-
-      // Check if the hashed password matches the stored passwordhash
-      if (userCheck.passwordhash !== hashedPassword) {
-        throw new Error("Invalid email or password")
-      }
-
-      // Generate a session token
-      const token = crypto.randomUUID()
-
-      // Set expiration date (30 days from now)
-      const expires = new Date()
-      expires.setDate(expires.getDate() + 30)
-
-      // Create a new session in the database
-      const { error: sessionError } = await supabaseClient.from("sessions").insert({
-        userid: userCheck.userid,
-        token: token,
-        expires: expires.toISOString(),
+      // Use Supabase's built-in authentication
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: email,
+        password: password,
       })
 
-      if (sessionError) {
-        throw new Error("Failed to create session")
+      if (error) {
+        throw new Error(error.message)
       }
 
-      // Store session token in cookie
-      document.cookie = `session_token=${token};expires=${expires.toUTCString()};path=/;SameSite=Strict`
-
-      // Store user info in session storage for client-side auth
-      sessionStorage.setItem("isLoggedIn", "true")
-      sessionStorage.setItem("userEmail", email)
-      sessionStorage.setItem("userId", userCheck.userid.toString())
-      sessionStorage.setItem("customerId", userCheck.customerid)
+      if (!data.user) {
+        throw new Error("Login failed")
+      }
 
       // Proceed with login success
       onLoginSuccess()

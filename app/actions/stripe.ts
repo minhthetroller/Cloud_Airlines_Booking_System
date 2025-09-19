@@ -6,7 +6,7 @@ import { headers } from "next/headers";
 
 import { CURRENCY } from "@/config";
 import { formatAmountForStripeFromVND } from "@/utils/stripe-helpers";
-import { stripe } from "@/lib/stripe";
+import { stripe } from "@/lib/stripe/stripe";
 
 export async function createPaymentIntent(
   data: FormData,
@@ -14,6 +14,9 @@ export async function createPaymentIntent(
   const amountVND = Number(data.get("amount")) || Number(data.get("customDonation"));
   const bookingId = data.get("bookingId") as string;
   const paymentId = data.get("paymentId") as string;
+  const userId = data.get("userId") as string;
+  const bookingReference = data.get("bookingReference") as string;
+  const sessionId = data.get("sessionId") as string;
   const ui_mode = (data.get("uiMode") as Stripe.Checkout.SessionCreateParams.UiMode) || "embedded";
 
   const headersList = await headers();
@@ -40,6 +43,9 @@ export async function createPaymentIntent(
       metadata: {
         ...(bookingId && { bookingId }),
         ...(paymentId && { paymentId }),
+        ...(userId && { userId }),
+        ...(bookingReference && { bookingReference }),
+        ...(sessionId && { sessionId }),
       },
       // Use proper success and cancel URLs for hosted checkout
       success_url: `${origin}/ticket-confirmation?session_id={CHECKOUT_SESSION_ID}&payment_status=success`,

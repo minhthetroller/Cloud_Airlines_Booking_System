@@ -10,8 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Check, Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase"
-import { sha256 } from "js-sha256"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState("")
@@ -23,6 +22,7 @@ export default function SetPasswordPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [token, setToken] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -37,9 +37,10 @@ export default function SetPasswordPage() {
   })
 
   useEffect(() => {
-    // Get token and email from URL query parameters
+    // Get token, email, and userId from URL query parameters
     const urlToken = searchParams.get("token")
     const urlEmail = searchParams.get("email")
+    const urlUserId = searchParams.get("userId")
 
     if (urlToken) {
       setToken(urlToken)
@@ -47,12 +48,11 @@ export default function SetPasswordPage() {
       // If email is in URL, use it
       if (urlEmail) {
         setEmail(urlEmail)
-      } else {
-        // Try to get email from session storage
-        const storedEmail = sessionStorage.getItem("registrationEmail")
-        if (storedEmail) {
-          setEmail(storedEmail)
-        }
+      }
+
+      // If userId is in URL, use it
+      if (urlUserId) {
+        setUserId(urlUserId)
       }
     } else {
       // No token provided, redirect to manual verification
@@ -92,45 +92,32 @@ export default function SetPasswordPage() {
         return
       }
 
-      // Hash the password using js-sha256
-      const hashedPassword = sha256(password)
-
-      // Check if we have an email to query with
-      if (!email) {
-        setError("Email not found. Please try again or contact support.")
+      // Check if we have user ID or email to work with
+      if (!userId && !email) {
+        setError("User information not found. Please try again or contact support.")
         return
       }
 
-      // Query the database to get the userId using the username field instead of email
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("userid")
-        .eq("username", email)
-        .single()
+      // Call the server-side API to update the password
+      const response = await fetch("/api/update-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userId,
+          email: email,
+          password: password,
+          token: token,
+        }),
+      })
 
-      if (userError) {
-        console.error("Error finding user by username:", userError)
-        setError("Could not find user with the provided email. Please try again or contact support.")
-        return
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to update password")
       }
 
-      if (!userData || !userData.userid) {
-        setError("User not found with the provided email. Please try again or contact support.")
-        return
-      }
-
-      // Update the user's password in the database using the retrieved userId
-      const { error: updateError } = await supabaseClient
-        .from("users")
-        .update({
-          passwordhash: hashedPassword, // Changed from password to passwordhash
-          accountstatus: "verified",
-        })
-        .eq("userid", userData.userid)
-
-      if (updateError) {
-        throw updateError
-      }
+      const result = await response.json()
 
       // Set success state and redirect to success page
       setSuccess(true)

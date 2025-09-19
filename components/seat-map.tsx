@@ -18,6 +18,7 @@ interface Seat {
   classid: number
   seattype: string
   isoccupied?: boolean
+  isLocked?: boolean
 }
 
 interface SeatMapProps {
@@ -102,6 +103,7 @@ export default function SeatMap({
   // Handle seat click
   const handleSeatClick = (seat: Seat) => {
     if (seat.isoccupied || seat.seattype === "blocked") return // Cannot select occupied or blocked seats
+    if (seat.isLocked) return // Cannot select locked seats
 
     // Check if user is trying to select a seat in a higher class
     // Higher classId means higher class (e.g., First Class is 5, Economy Saver is 1)
@@ -158,6 +160,7 @@ export default function SeatMap({
     const isSelected = selectedSeat?.seatid === seat.seatid
     const isBlocked = seat.seattype === "blocked" || seat.seatnumber.startsWith("3") || seat.seatnumber.startsWith("13")
     const isOccupied = seat.isoccupied
+    const isLocked = seat.isLocked
 
     let buttonClass = `w-12 h-12 flex items-center justify-center rounded font-medium text-sm`
     let cursorClass = "cursor-pointer"
@@ -168,11 +171,14 @@ export default function SeatMap({
     } else if (isOccupied) {
       buttonClass += " bg-red-500 text-white"
       cursorClass = "cursor-not-allowed"
+    } else if (isLocked) {
+      buttonClass += " bg-amber-500 text-white animate-pulse"
+      cursorClass = "cursor-not-allowed"
     } else if (isBlocked) {
       buttonClass += " bg-gray-700 text-white"
       cursorClass = "cursor-not-allowed"
     } else {
-      // If not selected/occupied/blocked, use class color
+      // If not selected/occupied/locked/blocked, use class color
       buttonClass += ` ${getClassColor(seat.classid)} hover:brightness-90`
     }
 
@@ -184,10 +190,10 @@ export default function SeatMap({
         type="button"
         className={buttonClass}
         onClick={() => handleSeatClick(seat)}
-        disabled={isOccupied || isBlocked}
+        disabled={isOccupied || isBlocked || isLocked}
         title={`${seat.seatnumber} - ${getClassName(seat.classid)}${isOccupied ? " - Occupied" : ""}${
-          isBlocked ? " - Blocked" : ""
-        }`}
+          isLocked ? " - Being selected by another user" : ""
+        }${isBlocked ? " - Blocked" : ""}`}
       >
         {seat.seatnumber}
       </button>

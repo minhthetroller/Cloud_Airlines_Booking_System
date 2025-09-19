@@ -11,6 +11,7 @@ import { AlertCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { EnhancedDatePicker } from "@/components/ui/enhanced-date-picker"
 import { PhoneInput } from "@/components/ui/phone-input"
+import { useRegistration } from "@/lib/contexts/registration-context"
 
 export default function DetailsPage() {
   const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>()
@@ -23,21 +24,17 @@ export default function DetailsPage() {
   const [country, setCountry] = useState("")
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { registrationData, updateRegistrationData } = useRegistration()
 
   const [passportNumber, setPassportNumber] = useState("")
   const [passportExpiry, setPassportExpiry] = useState("")
 
   // Check if previous steps are completed
   useEffect(() => {
-    const email = sessionStorage.getItem("registrationEmail")
-    const firstName = sessionStorage.getItem("registrationFirstName")
-    const lastName = sessionStorage.getItem("registrationLastName")
-    const title = sessionStorage.getItem("registrationTitle")
-
-    if (!email || !firstName || !lastName || !title) {
+    if (!registrationData.email || !registrationData.firstName || !registrationData.lastName || !registrationData.title) {
       router.push("/register")
     }
-  }, [router])
+  }, [registrationData, router])
 
   const handleSubmit = async () => {
     // Validate inputs
@@ -82,37 +79,19 @@ export default function DetailsPage() {
     }
 
     try {
-      // Get email and name from session storage
-      const email = sessionStorage.getItem("registrationEmail") || ""
-      const firstName = sessionStorage.getItem("registrationFirstName") || ""
-      const lastName = sessionStorage.getItem("registrationLastName") || ""
-      const title = sessionStorage.getItem("registrationTitle") || ""
-
-      // Create customer data object
-      const customerData = {
-        firstName,
-        lastName,
-        pronoun: title,
-        dateOfBirth: dateOfBirth.toISOString(),
+      // Store all registration data in context
+      updateRegistrationData({
+        dateOfBirth,
         gender,
         nationality,
         identityCardNumber: idNumber,
         phoneNumber,
-        address: addressLine,
+        addressLine,
         city,
         country,
         passportNumber,
         passportExpiry,
-      }
-
-      // Store customer data in session storage
-      sessionStorage.setItem("customerData", JSON.stringify(customerData))
-
-      // Generate a unique token for verification
-      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-
-      // Store token in session storage
-      sessionStorage.setItem("registrationToken", token)
+      })
 
       // Navigate to the confirmation page
       router.push("/register/confirmation")

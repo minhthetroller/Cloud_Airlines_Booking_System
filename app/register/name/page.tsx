@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, ArrowLeft, Info } from "lucide-react"
 import Link from "next/link"
+import { useRegistration } from "@/lib/contexts/registration-context"
 
 export default function NamePage() {
   const [title, setTitle] = useState("")
@@ -16,14 +17,14 @@ export default function NamePage() {
   const [firstName, setFirstName] = useState("")
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { registrationData, updateRegistrationData } = useRegistration()
 
-  // Check if email exists in session storage
+  // Check if email exists in registration context
   useEffect(() => {
-    const email = sessionStorage.getItem("registrationEmail")
-    if (!email) {
+    if (!registrationData.email) {
       router.push("/register")
     }
-  }, [router])
+  }, [registrationData.email, router])
 
   const handleNext = () => {
     // Validate inputs
@@ -37,10 +38,12 @@ export default function NamePage() {
       return
     }
 
-    // Store name information in session storage
-    sessionStorage.setItem("registrationTitle", title)
-    sessionStorage.setItem("registrationLastName", lastName)
-    sessionStorage.setItem("registrationFirstName", firstName)
+    // Store name information in registration context
+    updateRegistrationData({
+      title,
+      lastName,
+      firstName
+    })
 
     // Navigate to the next step
     router.push("/register/details")

@@ -8,18 +8,26 @@ import BookingForm from "@/components/booking-form"
 import LoginModal from "@/components/login-modal"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
-import { useLanguage } from "@/lib/language-context"
+import { useAuth } from "@/lib/contexts/auth-context"
+import { useLanguage } from "@/lib/contexts/language-context"
+import { useBooking } from "@/lib/contexts/booking-context"
 import LanguageSelector from "@/components/language-selector"
 
 export default function Home() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
   const { user, isAuthenticated, signOut, loading } = useAuth()
+  const { clearBooking } = useBooking()
   const router = useRouter()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
   const [dropdownView, setDropdownView] = useState("main") // 'main' or 'language'
   const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Clear booking data when user navigates to home page
+  useEffect(() => {
+    // Clear any ongoing booking process when returning to home
+    clearBooking()
+  }, [clearBooking])
 
   const handleSignOut = async () => {
     await signOut()
@@ -43,11 +51,9 @@ export default function Home() {
   // Effect to redirect to profile after login
   useEffect(() => {
     if (isAuthenticated && user) {
-      const justLoggedIn = sessionStorage.getItem("justLoggedIn")
-      if (justLoggedIn === "true") {
-        sessionStorage.removeItem("justLoggedIn")
-        router.push("/profile")
-      }
+      // Check if user just logged in - use a more secure method
+      // Remove session storage usage for security
+      router.push("/profile")
     }
   }, [isAuthenticated, user, router])
 

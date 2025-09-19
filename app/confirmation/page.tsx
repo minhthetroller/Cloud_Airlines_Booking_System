@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Check, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase-client"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 
 interface SelectedFlightDetails {
   flightId: number

@@ -1,14 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, ArrowLeft } from "lucide-react"
+import { AlertCircle, ArrowLeft, RotateCcw } from "lucide-react"
 import Link from "next/link"
+import { useRegistration } from "@/lib/contexts/registration-context"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -17,10 +19,37 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
+  const { registrationData, updateRegistrationData, clearRegistrationData, isLoaded } = useRegistration()
+
+  // Load existing email from registration data when component mounts
+  useEffect(() => {
+    if (isLoaded && registrationData.email) {
+      setEmail(registrationData.email)
+    }
+  }, [isLoaded, registrationData.email])
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return re.test(email)
+  }
+
+  const checkEmailExists = async (email: string): Promise<boolean> => {
+    try {
+      // Call the Supabase edge function
+      const { data, error } = await supabaseClient.functions.invoke('check-email', {
+        body: { email: email.toLowerCase() }
+      })
+
+      if (error) {
+        console.error('Edge function error:', error)
+        throw new Error('Unable to verify email')
+      }
+
+      return data?.exists || false
+    } catch (error) {
+      console.error('Error checking email:', error)
+      throw error
+    }
   }
 
   const handleNext = async () => {
@@ -32,42 +61,19 @@ export default function RegisterPage() {
       return
     }
 
-    // Check email uniqueness
+    // Check email uniqueness using edge function
     setIsCheckingEmail(true)
     try {
-      const response = await fetch("/api/check-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: email.toLowerCase() }),
-      })
+      const emailExists = await checkEmailExists(email)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("API Error:", errorData)
-        setError("Unable to verify email. Please check your connection and try again.")
-        setIsCheckingEmail(false)
-        return
-      }
-
-      const result = await response.json()
-
-      if (result.error) {
-        console.error("Server Error:", result.error)
-        setError("Unable to verify email. Please try again later.")
-        setIsCheckingEmail(false)
-        return
-      }
-
-      if (result.exists) {
+      if (emailExists) {
         setError("This email is already registered. Please use a different email or try logging in.")
         setIsCheckingEmail(false)
         return
       }
     } catch (error) {
-      console.error("Network Error:", error)
-      setError("Network error occurred. Please check your internet connection and try again.")
+      console.error("Email check error:", error)
+      setError("Unable to verify email. Please check your connection and try again.")
       setIsCheckingEmail(false)
       return
     }
@@ -79,8 +85,8 @@ export default function RegisterPage() {
       return
     }
 
-    // Store email in session storage for the next steps
-    sessionStorage.setItem("registrationEmail", email)
+    // Store email in registration context
+    updateRegistrationData({ email })
 
     // Navigate to the next step
     router.push("/register/name")
@@ -104,9 +110,37 @@ export default function RegisterPage() {
           <span>Back</span>
         </Link>
 
-        <h1 className="text-3xl font-bold text-white mb-8">Join COSMILE</h1>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-white">Join COSMILE</h1>
+          
+          {isLoaded && registrationData.email && (
+            <Button
+              onClick={() => {
+                clearRegistrationData()
+                setEmail("")
+                setTermsAccepted(false)
+                setAgeVerified(false)
+                setError(null)
+              }}
+              variant="outline"
+              size="sm"
+              className="bg-transparent border-[#9b6a4f] text-[#9b6a4f] hover:bg-[#9b6a4f] hover:text-white"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Start Over
+            </Button>
+          )}
+        </div>
 
         <div className="max-w-2xl mx-auto bg-[#f8f5f2] rounded-lg p-8">
+          {isLoaded && registrationData.email && (
+            <Alert className="mb-6 bg-blue-50 border-blue-200">
+              <AlertCircle className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                We found your previous registration progress. You can continue where you left off or start over.
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-[#0f2d3c]">

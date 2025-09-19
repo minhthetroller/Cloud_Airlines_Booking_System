@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
+import { useBooking } from "@/lib/contexts/booking-context"
 import {NavigateOptions} from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 interface Airport {
@@ -84,9 +85,11 @@ interface PassengerDetails {
   travelClass: string
 }
 
-export default function ResultsPage(href: string, options?: NavigateOptions) {
+export default function ResultsPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { state, setPassengerDetails, setDepartureFlight, setReturnFlight, dispatch } = useBooking()
+  
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [departureResults, setDepartureResults] = useState<FlightResult[]>([])
@@ -94,23 +97,25 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
   const [airports, setAirports] = useState<Record<string, Airport>>({})
   const [ticketClasses, setTicketClasses] = useState<Record<number, string>>({})
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
-  const [selectedDepartureFlight, setSelectedDepartureFlight] = useState<SelectedFlightDetails | null>(null)
-  const [selectedReturnFlight, setSelectedReturnFlight] = useState<SelectedFlightDetails | null>(null)
   const [activeFlightId, setActiveFlightId] = useState<number | null>(null)
   const [activeClass, setActiveClass] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("departure")
   const [dates, setDates] = useState<DateOption[]>([])
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
-  const [passengerDetails, setPassengerDetails] = useState<PassengerDetails>({
+  const isFirstRender = React.useRef(true)
+  const [expectedFlightCount, setExpectedFlightCount] = useState(2)
+  const [hasShownNoFlights, setHasShownNoFlights] = useState(false)
+
+  // Get selected flights from context
+  const selectedDepartureFlight = state.selectedDepartureFlight
+  const selectedReturnFlight = state.selectedReturnFlight
+  const passengerDetails = state.passengerDetails || {
     adults: 1,
     children: 0,
     infants: 0,
     travelClass: "economy-saver",
-  })
-  const [totalPassengers, setTotalPassengers] = useState(1)
-  const isFirstRender = React.useRef(true)
-  const [expectedFlightCount, setExpectedFlightCount] = useState(2)
-  const [hasShownNoFlights, setHasShownNoFlights] = useState(false)
+  }
+  const totalPassengers = state.totalPassengers || 1
 
   // Get search parameters
   const from = searchParams.get("from") || ""
@@ -508,14 +513,11 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
       passengerDetails.infants !== infants ||
       passengerDetails.travelClass !== travelClass
     ) {
+      // Update passenger details in context instead of session storage
       setPassengerDetails(details)
-      setTotalPassengers(adults + children + infants)
-
-      // Store in session storage for use throughout the booking process
-      sessionStorage.setItem("passengerDetails", JSON.stringify(details))
-      sessionStorage.setItem("totalPassengers", (adults + children + infants).toString())
+      dispatch({ type: 'SET_TOTAL_PASSENGERS', payload: adults + children + infants })
     }
-  }, [searchParams])
+  }, [searchParams, passengerDetails, setPassengerDetails, dispatch])
 
   // Fetch airports data
   useEffect(() => {
@@ -735,14 +737,14 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
 
     // Determine if this is a departure or return flight selection
     if (activeTab === "departure" || !isRoundTrip) {
-      setSelectedDepartureFlight(flightDetails)
+      setDepartureFlight(flightDetails)
 
       // If round trip, automatically switch to return tab after selecting departure
       if (isRoundTrip && !selectedReturnFlight) {
         setActiveTab("return")
       }
     } else {
-      setSelectedReturnFlight(flightDetails)
+      setReturnFlight(flightDetails)
     }
 
     // Do NOT reset active selections - keep them open
@@ -772,18 +774,8 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
       return
     }
 
-    // Store selected flight details in session storage
-    sessionStorage.setItem("selectedDepartureFlight", JSON.stringify(selectedDepartureFlight))
-    sessionStorage.setItem("departureFlight", JSON.stringify(selectedDepartureFlight)) // Add this line to store with both keys
-
-    if (isRoundTrip && selectedReturnFlight) {
-      sessionStorage.setItem("selectedReturnFlight", JSON.stringify(selectedReturnFlight))
-      sessionStorage.setItem("returnFlight", JSON.stringify(selectedReturnFlight)) // Add this line to store with both keys
-    }
-
-    // Store passenger details again to ensure it's available
-    sessionStorage.setItem("passengerDetails", JSON.stringify(passengerDetails))
-    sessionStorage.setItem("totalPassengers", totalPassengers.toString())
+    // Flight details are already stored in context via setDepartureFlight/setReturnFlight
+    // No need for session storage - context handles persistence
 
     // Navigate to seat selection page with passenger counts in the URL
     router.push(
@@ -989,8 +981,8 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
       setDates(quickFormatDates);
 
       // Also reset selections when the date changes
-      setSelectedDepartureFlight(null)
-      setSelectedReturnFlight(null)
+      dispatch({ type: 'SET_DEPARTURE_FLIGHT', payload: null })
+      dispatch({ type: 'SET_RETURN_FLIGHT', payload: null })
       setActiveFlightId(null)
       setActiveClass(null)
     }

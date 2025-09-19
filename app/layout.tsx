@@ -3,8 +3,10 @@ import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
-import { AuthProvider } from "@/lib/auth-context"
-import { LanguageProvider } from "@/lib/language-context"
+import { AuthProvider } from "@/lib/contexts/auth-context"
+import { LanguageProvider } from "@/lib/contexts/language-context"
+import { RegistrationProvider } from "@/lib/contexts/registration-context"
+import { BookingProvider } from "@/lib/contexts/booking-context"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -24,7 +26,11 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <AuthProvider>
-            <LanguageProvider>{children}</LanguageProvider>
+            <RegistrationProvider>
+              <BookingProvider>
+                <LanguageProvider>{children}</LanguageProvider>
+              </BookingProvider>
+            </RegistrationProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>
