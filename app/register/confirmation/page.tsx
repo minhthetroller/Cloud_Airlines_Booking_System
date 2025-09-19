@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import Image from "next/image"
 import supabaseClient from "@/lib/supabase/supabaseClient"
-import { useRegistration } from "@/lib/registration-context"
+import { useRegistration } from "@/lib/contexts/registration-context"
 
 export default function ConfirmationPage() {
   const [email, setEmail] = useState("")

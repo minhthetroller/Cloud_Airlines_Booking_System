@@ -11,7 +11,7 @@ import { AlertCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { EnhancedDatePicker } from "@/components/ui/enhanced-date-picker"
 import { PhoneInput } from "@/components/ui/phone-input"
-import { useRegistration } from "@/lib/registration-context"
+import { useRegistration } from "@/lib/contexts/registration-context"
 
 export default function DetailsPage() {
   const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>()

@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "dev:3000": "next dev --port 3000",
+    "dev:3001": "next dev --port 3001",
+    "dev:3002": "next dev --port 3002",
+    "dev-multi": "concurrently \"npm run dev:3000\" \"npm run dev:3001\" \"npm run dev:3002\" --names \"PORT-3000,PORT-3001,PORT-3002\" --prefix-colors \"cyan,magenta,yellow\""
   },
   "dependencies": {
     "@emotion/react": "latest",
@@ -46,6 +50,7 @@
     "@stripe/stripe-js": "^7.9.0",
     "@supabase/supabase-js": "latest",
     "autoprefixer": "^10.4.20",
+    "axios": "^1.12.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
@@ -62,6 +67,7 @@
     "react-hook-form": "^7.54.1",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
+    "redis": "^5.8.2",
     "resend": "latest",
     "sonner": "^1.7.1",
     "stripe": "^18.5.0",
@@ -75,6 +81,7 @@
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "concurrently": "^9.2.1",
     "cypress": "^15.2.0",
     "postcss": "^8",
     "supabase": "^2.40.7",

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { CheckCircle } from "lucide-react"
-import { useRegistration } from "@/lib/registration-context"
+import { useRegistration } from "@/lib/contexts/registration-context"
 
 export default function SuccessPage() {
   const router = useRouter()

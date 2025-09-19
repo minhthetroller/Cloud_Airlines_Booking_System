@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, ArrowLeft, RotateCcw } from "lucide-react"
 import Link from "next/link"
-import { useRegistration } from "@/lib/registration-context"
+import { useRegistration } from "@/lib/contexts/registration-context"
 import supabaseClient from "@/lib/supabase/supabaseClient"
 
 export default function RegisterPage() {

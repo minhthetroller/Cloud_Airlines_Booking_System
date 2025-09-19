@@ -12,7 +12,7 @@ import { ChevronRight, AlertCircle, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EnhancedDatePicker } from "@/components/ui/enhanced-date-picker"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 
 interface GuestInformation {
   firstName: string

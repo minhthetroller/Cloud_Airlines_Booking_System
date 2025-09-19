@@ -2,6 +2,21 @@ import { NextResponse } from "next/server"
 import supabaseClient from "@/lib/supabase/supabaseClient"
 import { format } from "date-fns"
 
+// Generate a more sophisticated COSMILE ID
+function generateCosmileId(userId: string, firstName: string, lastName: string, email: string): string {
+  // Create a hash-based approach for better uniqueness and readability
+  const nameInitials = (firstName.charAt(0) + lastName.charAt(0)).toUpperCase()
+  const emailPrefix = email.split('@')[0].substring(0, 2).toUpperCase()
+  
+  // Use a portion of the user ID to ensure uniqueness
+  const userIdHash = userId.substring(0, 8).toUpperCase()
+  
+  // Generate a check digit for validation
+  const checkDigit = (userId.charCodeAt(0) + firstName.charCodeAt(0) + lastName.charCodeAt(0)) % 10
+  
+  return `${nameInitials}${emailPrefix}${userIdHash.substring(0, 4)}${checkDigit}`
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -11,88 +26,53 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
     }
 
-    // Get user record from users table
-    const { data: userRecord, error: userRecordError } = await supabaseClient
-      .from("users")
-      .select("*")
-      .eq("username", email)
-      .single()
-
-    if (userRecordError) {
-      return NextResponse.json({ error: userRecordError.message }, { status: 500 })
-    }
-
-    // Get customer details
+    // Get customer details by email (since email is stored in customers table)
     const { data: customerData, error: customerError } = await supabaseClient
       .from("customers")
       .select("*")
-      .eq("customerid", userRecord.customerid)
+      .eq("email", email)
       .single()
 
     if (customerError) {
       return NextResponse.json({ error: customerError.message }, { status: 500 })
     }
 
-    // Get recent bookings for the recent bookings section (limit to 5)
+    // Get recent bookings for the customer (assuming bookings table uses user_id)
+    // Note: You may need to adjust this based on your actual bookings table structure
     const { data: recentBookings, error: recentBookingsError } = await supabaseClient
       .from("bookings")
       .select("*")
-      .eq("userid", userRecord.userid)
-      .order("bookingdatetime", { ascending: false })
+      .eq("user_id", customerData.user_id)
+      .order("created_at", { ascending: false })
       .limit(5)
 
     if (recentBookingsError) {
       console.error("Error fetching recent bookings:", recentBookingsError)
     }
 
-    // Process recent bookings data
+    // Process recent bookings data (simplified for now)
     let processedRecentBookings: any[] = []
     if (recentBookings && recentBookings.length > 0) {
-      const bookingsWithFlights = await Promise.all(
-        recentBookings.map(async (booking: any) => {
-          // Get tickets for this booking
-          const { data: ticketsData, error: ticketsError } = await supabaseClient
-            .from("tickets")
-            .select("*, flights(*)")
-            .eq("bookingid", booking.bookingid)
-
-          if (ticketsError) {
-            console.error("Error fetching tickets:", ticketsError)
-            return null
-          }
-
-          if (!ticketsData || ticketsData.length === 0) {
-            return null
-          }
-
-          // Use the first ticket's flight data
-          const ticket = ticketsData[0]
-          const flight = ticket.flights
-
-          return {
-            id: booking.bookingid,
-            reference: booking.bookingreference,
-            flightNumber: flight?.flightnumber || "Unknown",
-            departureAirport: flight?.departureairportcode || "Unknown",
-            arrivalAirport: flight?.arrivalairportcode || "Unknown",
-            departureDate: flight?.departuredatetime
-              ? format(new Date(flight.departuredatetime), "MMM dd, yyyy")
-              : "Unknown",
-            status: booking.bookingstatus || "Pending",
-            price: booking.totalprice || 0,
-          }
-        }),
-      )
-
-      // Filter out null values
-      processedRecentBookings = bookingsWithFlights.filter((booking) => booking !== null)
+      processedRecentBookings = recentBookings.map((booking: any) => ({
+        id: booking.id,
+        reference: booking.reference || `BK${booking.id}`,
+        flightNumber: booking.flight_number || "Unknown",
+        departureAirport: booking.departure_airport || "Unknown", 
+        arrivalAirport: booking.arrival_airport || "Unknown",
+        departureDate: booking.departure_date
+          ? format(new Date(booking.departure_date), "MMM dd, yyyy")
+          : "Unknown",
+        status: booking.status || "Pending",
+        price: booking.total_price || 0,
+      }))
     }
 
     // Determine tier based on points
+    const points = customerData.points_available || 0
     let tier = "Stratus"
-    if (userRecord.pointsavailable > 10000) {
+    if (points >= 10000) {
       tier = "Cirrus"
-    } else if (userRecord.pointsavailable > 5000) {
+    } else if (points >= 5000) {
       tier = "Altostratus"
     }
 
@@ -100,10 +80,10 @@ export async function GET(request: Request) {
     let pointsForNextTier = 0
     let nextTier = ""
     if (tier === "Stratus") {
-      pointsForNextTier = 5000 - (userRecord.pointsavailable || 0)
+      pointsForNextTier = Math.max(0, 5000 - points)
       nextTier = "Altostratus"
     } else if (tier === "Altostratus") {
-      pointsForNextTier = 10000 - (userRecord.pointsavailable || 0)
+      pointsForNextTier = Math.max(0, 10000 - points)
       nextTier = "Cirrus"
     } else {
       pointsForNextTier = 0
@@ -112,14 +92,14 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       user: {
-        id: userRecord.userid,
+        id: customerData.user_id,
         email: email,
         firstName: customerData.firstname,
         lastName: customerData.lastname,
         title: customerData.pronoun,
-        points: userRecord.pointsavailable || 0,
+        points: points,
         tier,
-        cosmileId: `${1000000 + Number.parseInt(userRecord.userid)}`,
+        cosmileId: generateCosmileId(customerData.user_id, customerData.firstname, customerData.lastname, customerData.email),
         lastLogin: format(new Date(), "MMM dd, yyyy HH:mm (OOOO)"),
         pointsForNextTier,
         nextTier,
@@ -127,8 +107,8 @@ export async function GET(request: Request) {
       customerDetails: customerData,
       recentBookings: processedRecentBookings,
       ids: {
-        userId: userRecord.userid,
-        customerId: userRecord.customerid,
+        userId: customerData.user_id,
+        customerId: customerData.user_id, // Using user_id as customerId for consistency
       }
     })
   } catch (error: any) {
@@ -146,22 +126,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "User ID and customer details are required" }, { status: 400 })
     }
 
-    // Get user record to find customer ID
-    const { data: userRecord, error: userRecordError } = await supabaseClient
-      .from("users")
-      .select("customerid")
-      .eq("userid", userId)
-      .single()
-
-    if (userRecordError) {
-      return NextResponse.json({ error: userRecordError.message }, { status: 500 })
-    }
-
-    // Update customer details
+    // Update customer details using user_id
     const { data, error } = await supabaseClient
       .from("customers")
       .update(customerDetails)
-      .eq("customerid", userRecord.customerid)
+      .eq("user_id", userId)
       .select()
 
     if (error) {

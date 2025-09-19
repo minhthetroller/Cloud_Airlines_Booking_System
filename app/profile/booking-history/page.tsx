@@ -7,7 +7,7 @@ import { AlertCircle, Calendar, Plane, ArrowLeft, ChevronDown, ChevronUp, X, Ale
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth } from "@/lib/contexts/auth-context"
 import {
   Dialog,
   DialogContent,

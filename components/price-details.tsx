@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface TicketClass {

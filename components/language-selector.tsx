@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from 'react'
-import { useLanguage } from '@/lib/language-context'
+import { useLanguage } from '@/lib/contexts/language-context'
 
 export default function LanguageSelector() {
   const [isOpen, setIsOpen] = useState(false)

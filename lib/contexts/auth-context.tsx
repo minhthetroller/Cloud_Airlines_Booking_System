@@ -8,9 +8,9 @@ import { User as SupabaseUser } from "@supabase/supabase-js"
 
 interface User {
   email: string
-  customerId?: string
-  userId?: number
   id: string
+  // Remove customerId and userId - these will be fetched from database when needed
+  // Security: Never store sensitive IDs in localStorage or sessionStorage
 }
 
 interface AuthContextType {
@@ -46,18 +46,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (session?.user) {
-          // Try to get additional user data from your custom users table if needed
-          const { data: userData, error: userError } = await supabaseClient
-            .from("users")
-            .select("customerid, userid")
-            .eq("username", session.user.email)
-            .single()
-
+          // User authenticated with Supabase - use session token securely
+          // Database IDs will be fetched when needed via authenticated API calls
           setUser({
             id: session.user.id,
             email: session.user.email || "",
-            customerId: userData?.customerid,
-            userId: userData?.userid,
           })
           setIsAuthenticated(true)
         } else {
@@ -79,18 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
-          // Try to get additional user data from your custom users table if needed
-          const { data: userData, error: userError } = await supabaseClient
-            .from("users")
-            .select("customerid, userid")
-            .eq("username", session.user.email)
-            .single()
-
+          // User authenticated with Supabase - use session token securely
+          // Database IDs will be fetched when needed via authenticated API calls
           setUser({
             id: session.user.id,
             email: session.user.email || "",
-            customerId: userData?.customerid,
-            userId: userData?.userid,
           })
           setIsAuthenticated(true)
         } else {

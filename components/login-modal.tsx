@@ -14,7 +14,7 @@ import Link from "next/link"
 import Image from "next/image"
 import supabaseClient from "@/lib/supabase/supabaseClient"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/supabase/auth-context"
+import { useAuth } from "@/lib/contexts/auth-context"
 
 interface LoginModalProps {
   isOpen: boolean

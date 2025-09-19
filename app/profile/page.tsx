@@ -12,9 +12,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Edit2, Check, X, Calendar, Plane } from "lucide-react"
 import { format } from "date-fns"
 import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
-import { useLanguage } from "@/lib/language-context"
+import { useLanguage } from "@/lib/contexts/language-context"
 import TierBenefitsModal from "@/components/tier-benefits-modal"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import axios from "axios"
 
 interface UserProfile {
@@ -67,29 +67,50 @@ export default function ProfilePage() {
   const [updateLoading, setUpdateLoading] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [updateSuccess, setUpdateSuccess] = useState(false)
-  const [router, setRouter] = useState(useRouter())
-  const { isAuthenticated, user: authUser, signOut } = useAuth()
+  const router = useRouter()
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
   const [showPointHistory, setShowPointHistory] = useState(false)
   const [pointHistory, setPointHistory] = useState<any[]>([])
   const [pointHistoryLoading, setPointHistoryLoading] = useState(false)
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      // If not authenticated, redirect to home
-      if (!isAuthenticated) {
-        router.push("/")
-        return
-      }
+    const checkAuthAndFetchData = async () => {
+      try {
+        setLoading(true)
+        
+        // Check if user is authenticated via Supabase session
+        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession()
+        
+        if (sessionError) {
+          console.error("Session error:", sessionError)
+          router.push("/")
+          return
+        }
 
-      if (authUser) {
-        fetchUserData(authUser.email)
+        if (!session?.user) {
+          // No authenticated user, redirect to home
+          router.push("/")
+          return
+        }
+
+        // User is authenticated, fetch their profile data
+        const userEmail = session.user.email
+        if (userEmail) {
+          setCurrentUserEmail(userEmail)
+          await fetchUserData(userEmail)
+        } else {
+          router.push("/")
+        }
+      } catch (error) {
+        console.error("Auth check error:", error)
+        router.push("/")
       }
     }
 
-    checkAuth()
-  }, [isAuthenticated, authUser, router])
+    checkAuthAndFetchData()
+  }, [router])
 
   const fetchUserData = async (email: string) => {
     setLoading(true)
@@ -192,7 +213,17 @@ export default function ProfilePage() {
   }
 
   const handleSignOut = async () => {
-    await signOut()
+    try {
+      const { error } = await supabaseClient.auth.signOut()
+      if (error) {
+        console.error("Sign out error:", error)
+      }
+      // Redirect to home page after sign out
+      router.push("/")
+    } catch (error) {
+      console.error("Sign out error:", error)
+      router.push("/")
+    }
   }
 
   const toggleLanguage = () => {
@@ -216,12 +247,12 @@ export default function ProfilePage() {
   const fetchPointHistory = async () => {
     setPointHistoryLoading(true)
     try {
-      if (!user?.email) {
+      if (!currentUserEmail) {
         console.error("User email not found")
         return
       }
 
-      const response = await axios.get(`/api/profile/points?email=${encodeURIComponent(user.email)}`)
+      const response = await axios.get(`/api/profile/points?email=${encodeURIComponent(currentUserEmail)}`)
       
       const data = response.data
       setPointHistory(data.pointHistory)

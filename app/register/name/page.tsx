@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, ArrowLeft, Info } from "lucide-react"
 import Link from "next/link"
-import { useRegistration } from "@/lib/registration-context"
+import { useRegistration } from "@/lib/contexts/registration-context"
 
 export default function NamePage() {
   const [title, setTitle] = useState("")

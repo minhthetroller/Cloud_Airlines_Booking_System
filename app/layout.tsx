@@ -3,9 +3,10 @@ import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
-import { AuthProvider } from "@/lib/supabase/auth-context"
-import { LanguageProvider } from "@/lib/language-context"
-import { RegistrationProvider } from "@/lib/registration-context"
+import { AuthProvider } from "@/lib/contexts/auth-context"
+import { LanguageProvider } from "@/lib/contexts/language-context"
+import { RegistrationProvider } from "@/lib/contexts/registration-context"
+import { BookingProvider } from "@/lib/contexts/booking-context"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,7 +27,9 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <AuthProvider>
             <RegistrationProvider>
-              <LanguageProvider>{children}</LanguageProvider>
+              <BookingProvider>
+                <LanguageProvider>{children}</LanguageProvider>
+              </BookingProvider>
             </RegistrationProvider>
           </AuthProvider>
         </ThemeProvider>
