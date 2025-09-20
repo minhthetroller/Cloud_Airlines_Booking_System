@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,7 +13,7 @@ import Image from "next/image"
 import supabaseClient from "@/lib/supabase/supabaseClient"
 import { sha256 } from "js-sha256"
 
-export default function SetPasswordPage() {
+function SetPasswordContent() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -269,5 +269,23 @@ export default function SetPasswordPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Loading component for Suspense fallback
+function SetPasswordLoading() {
+  return (
+    <div className="min-h-screen bg-[#0f2d3c] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    </div>
+  )
+}
+
+// Main component wrapped with Suspense
+export default function SetPasswordPage() {
+  return (
+    <Suspense fallback={<SetPasswordLoading />}>
+      <SetPasswordContent />
+    </Suspense>
   )
 }

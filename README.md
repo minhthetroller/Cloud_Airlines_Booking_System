@@ -58,7 +58,7 @@ To get a local copy up and running, follow these simple steps.
     ```
 2.  **Install NPM packages**
     ```sh
-    npm install
+    pnpm install
     ```
 3.  **Set up environment variables**
     * Create a `.env.local` file in the root of the project.
