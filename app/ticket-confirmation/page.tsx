@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Check, ArrowLeft, Home } from "lucide-react"
@@ -36,7 +36,7 @@ interface Ticket {
   seats?: any
 }
 
-export default function TicketConfirmationPage() {
+function TicketConfirmationContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
@@ -577,5 +577,23 @@ export default function TicketConfirmationPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+// Loading component for Suspense fallback
+function TicketConfirmationLoading() {
+  return (
+    <div className="min-h-screen bg-[#0f2d3c] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    </div>
+  )
+}
+
+// Main component wrapped with Suspense
+export default function TicketConfirmationPage() {
+  return (
+    <Suspense fallback={<TicketConfirmationLoading />}>
+      <TicketConfirmationContent />
+    </Suspense>
   )
 }
