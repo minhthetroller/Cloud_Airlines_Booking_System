@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, Info, Plane, Calendar, ChevronDown, ArrowRight, AlertCircle, X } from "lucide-react"
 import Link from "next/link"
@@ -84,7 +84,7 @@ interface PassengerDetails {
   travelClass: string
 }
 
-export default function ResultsPage(href: string, options?: NavigateOptions) {
+function ResultsPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -1237,5 +1237,23 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
         </div>
       )}
     </main>
+  )
+}
+
+// Loading component for Suspense fallback
+function ResultsPageLoading() {
+  return (
+    <div className="min-h-screen bg-[#0f2d3c] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    </div>
+  )
+}
+
+// Main component wrapped with Suspense
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={<ResultsPageLoading />}>
+      <ResultsPageContent />
+    </Suspense>
   )
 }
