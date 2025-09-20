@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Check, ArrowLeft, Home } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
+import axios from "axios"
 
 interface Ticket {
   ticketid: string
@@ -278,21 +279,11 @@ export default function TicketConfirmationPage() {
 
       if (bookingError) throw bookingError
 
-      const response = await fetch("/api/send-ticket-confirmation", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: contactEmail,
-          booking: bookingData,
-          tickets: tickets,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to resend email")
-      }
+      const response = await axios.post("/api/send-ticket-confirmation", {
+        email: contactEmail,
+        booking: bookingData,
+        tickets: tickets,
+      });
 
       alert("Confirmation email sent successfully!")
     } catch (err: any) {

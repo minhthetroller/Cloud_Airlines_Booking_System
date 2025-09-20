@@ -6,7 +6,7 @@ import { headers } from "next/headers";
 
 import { CURRENCY } from "@/config";
 import { formatAmountForStripeFromVND } from "@/utils/stripe-helpers";
-import { stripe } from "@/lib/stripe";
+import { stripe } from "@/lib/stripe/stripe";
 
 export async function createPaymentIntent(
   data: FormData,

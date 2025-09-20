@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
 import {NavigateOptions} from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 interface Airport {
@@ -883,7 +883,9 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
                     >
                       <div className="text-center font-medium">Economy</div>
                       <div className="mt-4 text-center">
-                        <div className="text-sm text-gray-500">from VND</div>
+                        <div className={`text-sm ${
+                          activeFlightId === flight.flightid && activeClass === "economy" ? "text-white" : "text-gray-500"
+                        }`}>from VND</div>
                         <div className="text-xl font-bold">
                           {flight.economyPrice ? formatCurrency(flight.economyPrice) : "Not Available"}
                         </div>
@@ -911,7 +913,9 @@ export default function ResultsPage(href: string, options?: NavigateOptions) {
                     >
                       <div className="text-center font-medium">First Class</div>
                       <div className="mt-4 text-center">
-                        <div className="text-sm text-gray-500">from VND</div>
+                        <div className={`text-sm ${
+                          activeFlightId === flight.flightid && activeClass === "first-class" ? "text-white" : "text-gray-500"
+                        }`}>from VND</div>
                         <div className="text-xl font-bold">
                           {flight.firstClassPrice ? formatCurrency(flight.firstClassPrice) : "Not Available"}
                         </div>

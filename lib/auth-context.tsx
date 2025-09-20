@@ -3,7 +3,7 @@
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "./supabase/supabaseClient"
 import { v4 as uuidv4 } from "uuid"
 
 interface User {

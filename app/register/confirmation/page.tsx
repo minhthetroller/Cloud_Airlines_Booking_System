@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase/supabaseClient"
+import axios from "axios"
 
 export default function ConfirmationPage() {
   const [email, setEmail] = useState("")
@@ -95,21 +96,10 @@ export default function ConfirmationPage() {
         }
 
         // Send the verification email
-        const response = await fetch("/api/send-email", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: storedEmail,
-            token,
-          }),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to send verification email")
-        }
+        const response = await axios.post("/api/send-email", {
+          email: storedEmail,
+          token,
+        });
 
         // Email sent successfully
       } catch (err: any) {
@@ -134,18 +124,10 @@ export default function ConfirmationPage() {
       }
 
       // Send the verification email
-      const response = await fetch("/api/send-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, token }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to send verification email")
-      }
+      const response = await axios.post("/api/send-email", {
+        email,
+        token
+      });
 
       // Show success message
       setUpdateSuccess(true)

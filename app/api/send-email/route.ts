@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server"
-import { Resend } from "resend"
-
-// Initialize Resend with your API key
-const resend = new Resend(process.env.RESEND_API_KEY!)
+import resend from "@/lib/resend/resend"
 
 export async function POST(request: Request) {
   try {
@@ -102,10 +99,10 @@ export async function POST(request: Request) {
 
     // Send the email using Resend with the HTML content
     const { data, error } = await resend.emails.send({
-      from: "Cloud Airline <noreply@cloud-airlines.space>",
-      to: email,
-      subject: "Welcome to COSMILE - Verify Your Email",
-      html: htmlContent,
+        from: "Cloud Airline <noreply@cloud-airlines.space>",
+        to: email,
+        subject: "Welcome to COSMILE - Verify Your Email",
+        html: htmlContent,
     })
 
     if (error) {
