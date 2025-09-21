@@ -156,18 +156,43 @@ export async function POST(req: Request) {
                   return NextResponse.json({ message: "Booking status update failed" }, { status: 500 });
                 }
 
-                // Get booking details for email and points
-                const { data: bookingData, error: bookingError } = await supabaseClient
+                // Get booking details and contact email through proper relationships
+                // Since bookings table doesn't have contactemail, we need to query:
+                // bookings -> tickets -> passengers -> customers
+                const { data: bookingWithContact, error: bookingError } = await supabaseClient
                   .from("bookings")
-                  .select("contactemail, userid")
+                  .select(`
+                    *,
+                    userid,
+                    tickets (
+                      passengers (
+                        customers (
+                          contactemail,
+                          email
+                        )
+                      )
+                    )
+                  `)
                   .eq("bookingid", bookingId)
                   .single();
 
                 if (bookingError) {
                   console.error("Error fetching booking data:", bookingError);
                 } else {
+                  // Extract contact email from the first customer (all passengers should have same contact info)
+                  let contactEmail = null;
+                  if (bookingWithContact?.tickets && bookingWithContact.tickets.length > 0) {
+                    const firstTicket = bookingWithContact.tickets[0];
+                    if (firstTicket?.passengers?.customers) {
+                      contactEmail = firstTicket.passengers.customers.contactemail || 
+                                   firstTicket.passengers.customers.email;
+                    }
+                  }
+
+                  console.log("Contact email found:", contactEmail);
+
                   // Add points to user if applicable
-                  if (bookingData?.userid) {
+                  if (bookingWithContact?.userid) {
                     // Calculate points (500,000 VND = 1 point)
                     const amount = data.amount_total || 0;
                     const pointsToAdd = Math.floor((amount * 25000) / 500000); // Convert from USD cents to VND, then to points
@@ -176,7 +201,7 @@ export async function POST(req: Request) {
                       const { data: userData, error: userError } = await supabaseClient
                         .from("users")
                         .select("pointsavailable")
-                        .eq("userid", bookingData.userid)
+                        .eq("userid", bookingWithContact.userid)
                         .single();
 
                       if (!userError && userData) {
@@ -184,16 +209,19 @@ export async function POST(req: Request) {
                         await supabaseClient
                           .from("users")
                           .update({ pointsavailable: newPoints })
-                          .eq("userid", bookingData.userid);
+                          .eq("userid", bookingWithContact.userid);
                         
-                        console.log(`✅ Added ${pointsToAdd} points to user ${bookingData.userid}`);
+                        console.log(`✅ Added ${pointsToAdd} points to user ${bookingWithContact.userid}`);
                       }
                     }
                   }
 
                   // Send confirmation email
-                  if (bookingData?.contactemail) {
-                    await sendConfirmationEmail(bookingId, bookingData.contactemail);
+                  if (contactEmail) {
+                    console.log("Sending confirmation email to:", contactEmail);
+                    await sendConfirmationEmail(bookingId, contactEmail);
+                  } else {
+                    console.error("No contact email found for booking:", bookingId);
                   }
                 }
 
