@@ -1,60 +1,38 @@
 import type { Stripe } from "stripe";
 
 import { NextResponse } from "next/server";
-import supabaseClient from "@/lib/supabase/supabaseClient"
 import axios from "axios"
 
 import { stripe } from "@/lib/stripe";
+import { expireStaleBookings, getBookingDetails } from "@/lib/server/bookings";
+import { closePayment, completePayment } from "@/lib/server/payments";
 
 // Function to send confirmation email
-async function sendConfirmationEmail(bookingId: string, contactEmail: string) {
+async function sendConfirmationEmail(bookingId: number) {
   try {
-    console.log("Sending confirmation email to:", contactEmail);
+    const details = await getBookingDetails(bookingId);
 
-    // Get booking details
-    const { data: bookingData, error: bookingError } = await supabaseClient
-      .from("bookings")
-      .select("*")
-      .eq("bookingid", bookingId)
-      .single();
-
-    if (bookingError) {
-      console.error("Error fetching booking details:", bookingError);
-      return;
-    }
-
-    // Get ticket details
-    const { data: ticketsData, error: ticketsError } = await supabaseClient
-      .from("tickets")
-      .select(`
-        *,
-        flights(*),
-        passengers(*),
-        seats(*)
-      `)
-      .eq("bookingid", bookingId);
-
-    if (ticketsError) {
-      console.error("Error fetching ticket details:", ticketsError);
-      return;
-    }
-
-    if (!ticketsData || ticketsData.length === 0) {
+    if (!details || details.tickets.length === 0) {
       console.error("No tickets found for booking:", bookingId);
       return;
     }
 
+    if (!details.contactEmail) {
+      console.error("No contact email found for booking:", bookingId);
+      return;
+    }
+
+    console.log("Sending confirmation email to:", details.contactEmail);
+
     // Call the send-ticket-confirmation API
     const response = await axios.post(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/send-ticket-confirmation`, {
-      email: contactEmail,
-      booking: bookingData,
-      tickets: ticketsData,
+      email: details.contactEmail,
+      booking: details.booking,
+      tickets: details.tickets,
     })
 
-    const result = response.data
-    console.log(`✅ Confirmation email sent successfully to ${contactEmail} for booking ${bookingId}`)
-    console.log(`Email API response:`, result);
-    
+    console.log(`✅ Confirmation email sent successfully to ${details.contactEmail} for booking ${bookingId}`)
+    console.log(`Email API response:`, response.data);
   } catch (err: any) {
     console.error("Error in sendConfirmationEmail:", err)
     if (err.response) {
@@ -88,6 +66,7 @@ export async function POST(req: Request) {
 
   const permittedEvents: string[] = [
     "checkout.session.completed",
+    "checkout.session.expired",
     "payment_intent.succeeded",
     "payment_intent.payment_failed",
   ];
@@ -100,137 +79,34 @@ export async function POST(req: Request) {
         case "checkout.session.completed":
           data = event.data.object as Stripe.Checkout.Session;
           console.log(`💰 CheckoutSession status: ${data.payment_status}`);
-          
+
           // Handle successful payment
           if (data.payment_status === "paid") {
-            const bookingId = data.metadata?.bookingId;
-            const paymentId = data.metadata?.paymentId;
-            const transactionId = data.payment_intent as string;
-            
-            if (bookingId && paymentId) {
-              try {
-                // First check if this transaction has already been processed (idempotency check)
-                const { data: existingPayment, error: checkError } = await supabaseClient
-                  .from("payments")
-                  .select("paymentstatus, transactionid")
-                  .eq("paymentid", paymentId)
-                  .single();
+            const paymentId = Number(data.metadata?.paymentId);
 
-                if (checkError) {
-                  console.error("Error checking existing payment:", checkError);
-                  return NextResponse.json({ message: "Payment check failed" }, { status: 500 });
-                }
+            if (paymentId) {
+              // Payment, booking, tickets and points are updated in one transaction
+              const result = await completePayment(paymentId, (data.payment_intent as string) ?? null);
 
-                // If payment is already completed or has this transaction ID, skip processing
-                if (existingPayment.paymentstatus === "Completed" || 
-                    existingPayment.transactionid === transactionId) {
-                  console.log(`⚠️ Payment ${paymentId} already processed, skipping`);
-                  return NextResponse.json({ message: "Already processed" }, { status: 200 });
-                }
-
-                // Update payment record to completed
-                const { error: paymentError } = await supabaseClient
-                  .from("payments")
-                  .update({
-                    paymentmethod: "Credit Card",
-                    paymentstatus: "Completed",
-                    transactionid: transactionId,
-                  })
-                  .eq("paymentid", paymentId);
-
-                if (paymentError) {
-                  console.error("Error updating payment:", paymentError);
-                  return NextResponse.json({ message: "Payment update failed" }, { status: 500 });
-                }
-
-                // Update booking status to Confirmed
-                const { error: bookingStatusError } = await supabaseClient
-                  .from("bookings")
-                  .update({
-                    bookingstatus: "Confirmed",
-                  })
-                  .eq("bookingid", bookingId);
-
-                if (bookingStatusError) {
-                  console.error("Error updating booking status:", bookingStatusError);
-                  return NextResponse.json({ message: "Booking status update failed" }, { status: 500 });
-                }
-
-                // Get booking details and contact email through proper relationships
-                // Since bookings table doesn't have contactemail, we need to query:
-                // bookings -> tickets -> passengers -> customers
-                const { data: bookingWithContact, error: bookingError } = await supabaseClient
-                  .from("bookings")
-                  .select(`
-                    *,
-                    userid,
-                    tickets (
-                      passengers (
-                        customers (
-                          contactemail,
-                          email
-                        )
-                      )
-                    )
-                  `)
-                  .eq("bookingid", bookingId)
-                  .single();
-
-                if (bookingError) {
-                  console.error("Error fetching booking data:", bookingError);
-                } else {
-                  // Extract contact email from the first customer (all passengers should have same contact info)
-                  let contactEmail = null;
-                  if (bookingWithContact?.tickets && bookingWithContact.tickets.length > 0) {
-                    const firstTicket = bookingWithContact.tickets[0];
-                    if (firstTicket?.passengers?.customers) {
-                      contactEmail = firstTicket.passengers.customers.contactemail || 
-                                   firstTicket.passengers.customers.email;
-                    }
-                  }
-
-                  console.log("Contact email found:", contactEmail);
-
-                  // Add points to user if applicable
-                  if (bookingWithContact?.userid) {
-                    // Calculate points (500,000 VND = 1 point)
-                    const amount = data.amount_total || 0;
-                    const pointsToAdd = Math.floor((amount * 25000) / 500000); // Convert from USD cents to VND, then to points
-                    
-                    if (pointsToAdd > 0) {
-                      const { data: userData, error: userError } = await supabaseClient
-                        .from("users")
-                        .select("pointsavailable")
-                        .eq("userid", bookingWithContact.userid)
-                        .single();
-
-                      if (!userError && userData) {
-                        const newPoints = (userData.pointsavailable || 0) + pointsToAdd;
-                        await supabaseClient
-                          .from("users")
-                          .update({ pointsavailable: newPoints })
-                          .eq("userid", bookingWithContact.userid);
-                        
-                        console.log(`✅ Added ${pointsToAdd} points to user ${bookingWithContact.userid}`);
-                      }
-                    }
-                  }
-
-                  // Send confirmation email
-                  if (contactEmail) {
-                    console.log("Sending confirmation email to:", contactEmail);
-                    await sendConfirmationEmail(bookingId, contactEmail);
-                  } else {
-                    console.error("No contact email found for booking:", bookingId);
-                  }
-                }
-
-                console.log(`✅ Payment completed for booking ${bookingId}`);
-              } catch (error) {
-                console.error("Error processing payment completion:", error);
-                return NextResponse.json({ message: "Payment processing failed" }, { status: 500 });
+              if (result.alreadyProcessed) {
+                console.log(`⚠️ Payment ${paymentId} already processed, skipping`);
+                return NextResponse.json({ message: "Already processed" }, { status: 200 });
               }
+
+              if (result.confirmed) {
+                await sendConfirmationEmail(result.bookingId);
+              }
+
+              console.log(`✅ Payment completed for booking ${result.bookingId}`);
             }
+          }
+          break;
+        case "checkout.session.expired":
+          data = event.data.object as Stripe.Checkout.Session;
+          if (data.metadata?.paymentId && data.metadata?.bookingId) {
+            await closePayment(Number(data.metadata.paymentId), Number(data.metadata.bookingId), "Expired");
+            // Frees the seats of bookings whose payment window is over
+            await expireStaleBookings();
           }
           break;
         case "payment_intent.payment_failed":

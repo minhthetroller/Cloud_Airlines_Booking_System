@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Check, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
+import type { GuestInformation } from "@/lib/booking/types"
+import { flushDraft } from "@/lib/store/draftSync"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setBookingProgress, setPassengers as storePassengers } from "@/lib/store/slices/bookingSlices"
 
 interface SelectedFlightDetails {
   flightId: number
@@ -47,25 +51,23 @@ interface PassengerInfo {
 
 export default function ConfirmationPage() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [departureFlight, setDepartureFlight] = useState<SelectedFlightDetails | null>(null)
   const [returnFlight, setReturnFlight] = useState<SelectedFlightDetails | null>(null)
   const [departureSeat, setDepartureSeat] = useState<Seat | null>(null)
   const [returnSeat, setReturnSeat] = useState<Seat | null>(null)
+  const [departureSeats, setDepartureSeats] = useState<Seat[]>([])
+  const [returnSeats, setReturnSeats] = useState<Seat[]>([])
   const [isRoundTrip, setIsRoundTrip] = useState(false)
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null)
   const [passengers, setPassengers] = useState<PassengerInfo[]>([])
   const [bookingReference, setBookingReference] = useState<string>("")
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [customerId, setCustomerId] = useState<string | null>(null)
-  const [userId, setUserId] = useState<string | null>(null)
-  const [existingBookingId, setExistingBookingId] = useState<string | null>(null)
   const [contactInfo, setContactInfo] = useState<any>(null)
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({})
-  const [bookingCreated, setBookingCreated] = useState(false)
-  const [dataLoaded, setDataLoaded] = useState(false)
 
   const splitFullName = (fullName: string) => {
     const parts = fullName.trim().split(" ")
@@ -77,240 +79,97 @@ export default function ConfirmationPage() {
   }
 
   useEffect(() => {
+    if (!hydrated) return
+
+    const state = store.getState()
+
     // Check if user is logged in
-    const loggedIn = sessionStorage.getItem("isLoggedIn") === "true"
-    const email = sessionStorage.getItem("userEmail")
-    const customerIdFromSession = sessionStorage.getItem("customerId")
-    const userIdFromSession = sessionStorage.getItem("userId")
-    const bookingId = sessionStorage.getItem("bookingId")
-    const storedBookingReference = sessionStorage.getItem("bookingReference")
-
-    setIsLoggedIn(loggedIn)
-    setUserEmail(email)
-    setCustomerId(customerIdFromSession)
-    setUserId(userIdFromSession)
-
-    // If there's an existing booking ID, store it
-    if (bookingId) {
-      setExistingBookingId(bookingId)
-      setBookingCreated(true)
-    }
+    const loggedIn = !!state.auth.user
+    const email = state.auth.user?.email ?? null
 
     // If there's an existing booking reference, use it
-    if (storedBookingReference) {
-      setBookingReference(storedBookingReference)
+    if (state.booking.bookingReference) {
+      setBookingReference(state.booking.bookingReference)
     } else {
       // Otherwise generate a new one
-      setBookingReference(generateBookingReference())
+      const newReference = generateBookingReference()
+      setBookingReference(newReference)
+      dispatch(setBookingProgress({ bookingReference: newReference }))
     }
- 
-    // Load flight and seat details from session storage
-    const loadBookingDetails = async () => {
-      let parsedDepartureFlight: SelectedFlightDetails | null = null
-      let parsedDepartureSeat: Seat | null = null
-      let parsedReturnFlight: SelectedFlightDetails | null = null
-      let parsedReturnSeat: Seat | null = null
-      let parsedPassengers: PassengerInfo[] = []
-      let finalCustomerId: string | null = customerIdFromSession
 
+    // Load flight, seat, passenger and contact details from the store
+    const loadBookingDetails = async () => {
       try {
         setLoading(true)
 
         // Load flight details
-        const departureFlightData =
-          sessionStorage.getItem("selectedDepartureFlight") || sessionStorage.getItem("departureFlight")
-        const returnFlightData =
-          sessionStorage.getItem("selectedReturnFlight") || sessionStorage.getItem("returnFlight")
+        const { departure: parsedDepartureFlight, return: parsedReturnFlight } = state.flights
 
-        if (!departureFlightData) {
+        if (!parsedDepartureFlight) {
           throw new Error("No departure flight selected")
         }
 
-        parsedDepartureFlight = JSON.parse(departureFlightData)
         setDepartureFlight(parsedDepartureFlight)
 
-        if (returnFlightData) {
-          parsedReturnFlight = JSON.parse(returnFlightData)
+        if (parsedReturnFlight) {
           setReturnFlight(parsedReturnFlight)
           setIsRoundTrip(true)
         }
 
-        // Load seat details - first try to get all seats
-        const allDepartureSeatsData = sessionStorage.getItem("allDepartureSeats")
-        const allReturnSeatsData = sessionStorage.getItem("allReturnSeats")
+        // Load seat details: one seat per passenger for each flight
+        const allDepartureSeats = state.seats.departure
+        const allReturnSeats = state.seats.return
 
-        // If all seats aren't available, fall back to single seat
-        const departureSeatData = sessionStorage.getItem("selectedDepartureSeat")
-        const returnSeatData = sessionStorage.getItem("selectedReturnSeat")
-
-        if (allDepartureSeatsData) {
-          const allDepartureSeats = JSON.parse(allDepartureSeatsData)
-          if (allDepartureSeats && allDepartureSeats.length > 0) {
-            parsedDepartureSeat = allDepartureSeats[0]
-            setDepartureSeat(parsedDepartureSeat)
-          }
-        } else if (departureSeatData) {
-          parsedDepartureSeat = JSON.parse(departureSeatData)
-          setDepartureSeat(parsedDepartureSeat)
+        if (allDepartureSeats.length > 0) {
+          setDepartureSeats(allDepartureSeats)
+          setDepartureSeat(allDepartureSeats[0])
         } else {
           throw new Error("No departure seat selected")
         }
 
-        if (allReturnSeatsData) {
-          const allReturnSeats = JSON.parse(allReturnSeatsData)
-          if (allReturnSeats && allReturnSeats.length > 0) {
-            parsedReturnSeat = allReturnSeats[0]
-            setReturnSeat(parsedReturnSeat)
-          }
-        } else if (returnSeatData && returnFlightData) {
-          parsedReturnSeat = JSON.parse(returnSeatData)
-          setReturnSeat(parsedReturnSeat)
+        if (allReturnSeats.length > 0 && parsedReturnFlight) {
+          setReturnSeats(allReturnSeats)
+          setReturnSeat(allReturnSeats[0])
         }
 
         // Load passenger information
-        const passengersData = sessionStorage.getItem("passengers")
-        if (passengersData) {
-          parsedPassengers = JSON.parse(passengersData)
-
+        let parsedPassengers: GuestInformation[] = state.passengers
+        if (parsedPassengers.length > 0) {
           // Ensure at least one passenger is marked as primary
-          if (parsedPassengers.length > 0 && !parsedPassengers.some((p) => p.isPrimary)) {
-            parsedPassengers[0].isPrimary = true
-            sessionStorage.setItem("passengers", JSON.stringify(parsedPassengers))
+          if (!parsedPassengers.some((p) => p.isPrimary)) {
+            parsedPassengers = parsedPassengers.map((p, index) => (index === 0 ? { ...p, isPrimary: true } : p))
+            dispatch(storePassengers(parsedPassengers))
           }
 
           setPassengers(parsedPassengers)
-        } else {
-          // Create a default passenger if none exists
-          const guestInfo = sessionStorage.getItem("guestInformation")
-          if (guestInfo) {
-            const parsedInfo = JSON.parse(guestInfo)
-            const defaultPassenger = {
-              firstName: parsedInfo.firstName || "",
-              lastName: parsedInfo.lastName || "",
-              passportNumber: parsedInfo.passportNumber || "",
-              identityCardNumber: parsedInfo.identityCardNumber || "",
-              isPrimary: true,
-            }
-            parsedPassengers = [defaultPassenger]
-            setPassengers(parsedPassengers)
-            sessionStorage.setItem("passengers", JSON.stringify(parsedPassengers))
-          } else {
-            // Check if we need to create multiple passengers based on passenger count
-            const totalPassengersStr = sessionStorage.getItem("totalPassengers")
-            const passengerTypesStr = sessionStorage.getItem("passengerTypes")
-
-            if (totalPassengersStr) {
-              const totalPassengers = Number.parseInt(totalPassengersStr)
-              const passengerTypes = passengerTypesStr
-                ? JSON.parse(passengerTypesStr)
-                : { adults: 1, children: 0, infants: 0 }
-
-              // If logged in, create first passenger from user info
-              if (loggedIn && email) {
-                try {
-                  // Get user record from users table
-                  const { data: userData, error: userError } = await supabaseClient
-                    .from("users")
-                    .select("*")
-                    .eq("username", email)
-                    .single()
-
-                  if (userError) throw userError
-
-                  // Get customer details
-                  const { data: customerData, error: customerError } = await supabaseClient
-                    .from("customers")
-                    .select("*")
-                    .eq("customerid", userData.customerid)
-                    .single()
-
-                  if (customerError) throw customerError
-
-                  // Create primary passenger from customer data
-                  const primaryPassenger = {
-                    firstName: customerData.firstname || "",
-                    lastName: customerData.lastname || "",
-                    passportNumber: customerData.passportnumber || "",
-                    identityCardNumber: customerData.identitycardnumber || "",
-                    isPrimary: true,
-                  }
-
-                  parsedPassengers = [primaryPassenger]
-
-                  // Create placeholder passengers for remaining count
-                  for (let i = 1; i < totalPassengers; i++) {
-                    parsedPassengers.push({
-                      firstName: "",
-                      lastName: "",
-                      passportNumber: "",
-                      identityCardNumber: "",
-                      isPrimary: false,
-                    })
-                  }
-
-                  setPassengers(parsedPassengers)
-                  sessionStorage.setItem("passengers", JSON.stringify(parsedPassengers))
-                } catch (err) {
-                  console.error("Error creating passengers from user data:", err)
-                }
-              }
-            }
-          }
         }
 
         // Load contact information
-        const contactData = sessionStorage.getItem("contactInformation")
-        if (contactData) {
-          try {
-            const parsedContact = JSON.parse(contactData)
-            const nameData = splitFullName(parsedContact.contactName || "")
-            setContactInfo({
-              ...parsedContact,
-              firstName: nameData.firstName,
-              lastName: nameData.lastName
-            })
-            console.log("Loaded contact information:", parsedContact)
-          } catch (err) {
-            console.error("Error parsing contact information:", err)
-          }
-        } else {
+        const parsedContact = state.contact
+        if (parsedContact) {
+          const nameData = splitFullName(parsedContact.contactName || "")
+          setContactInfo({
+            ...parsedContact,
+            firstName: nameData.firstName,
+            lastName: nameData.lastName
+          })
+        } else if (parsedPassengers.length > 0) {
           // If no contact info, try to use primary passenger info
-          if (parsedPassengers.length > 0) {
-            const primaryPassenger = parsedPassengers.find((p) => p.isPrimary) || parsedPassengers[0]
-            if (primaryPassenger) {
-              const defaultContact = {
-                firstName: primaryPassenger.firstName || "",
-                lastName: primaryPassenger.lastName || "",
-                email: primaryPassenger.email || (loggedIn ? email : ""),
-                phone: primaryPassenger.phone || "",
-              }
-              setContactInfo(defaultContact)
-              sessionStorage.setItem("contactInformation", JSON.stringify(defaultContact))
-              console.log("Created default contact information from passenger:", defaultContact)
-            }
+          const primaryPassenger = parsedPassengers.find((p) => p.isPrimary) || parsedPassengers[0]
+          if (primaryPassenger) {
+            setContactInfo({
+              firstName: primaryPassenger.firstName || "",
+              lastName: primaryPassenger.lastName || "",
+              email: primaryPassenger.email || (loggedIn ? email : ""),
+              phone: primaryPassenger.phone || "",
+            })
           }
         }
 
-        // If logged in, fetch customer info from database
+        // If logged in, fetch customer info from the server
         if (loggedIn && email) {
           try {
-            // Get user record from users table
-            const { data: userData, error: userError } = await supabaseClient
-              .from("users")
-              .select("*")
-              .eq("username", email)
-              .single()
-
-            if (userError) throw userError
-
-            // Get customer details
-            const { data: customerData, error: customerError } = await supabaseClient
-              .from("customers")
-              .select("*")
-              .eq("customerid", userData.customerid)
-              .single()
-
-            if (customerError) throw customerError
+            const { customerDetails: customerData } = await api.get<{ customerDetails: any }>("/api/profile")
 
             // Set customer info with actual data from database
             setCustomerInfo({
@@ -318,70 +177,14 @@ export default function ConfirmationPage() {
               email: email,
               phone: customerData.phonenumber || "N/A",
             })
-
-            // Store customer ID for later use
-            finalCustomerId = customerData.customerid
-            setCustomerId(finalCustomerId)
-            sessionStorage.setItem("customerId", finalCustomerId)
-            setUserId(userData.userid)
           } catch (err) {
             console.error("Error fetching customer data:", err)
-            // Fallback to default info if database fetch fails
+            // Fallback to default info if the request fails
             setCustomerInfo({
               name: "User",
               email: email,
               phone: "N/A",
             })
-          }
-        } else {
-          // For guest users, use data from session storage if available
-          const guestInfo = sessionStorage.getItem("guestInformation")
-          if (guestInfo) {
-            const parsedInfo = JSON.parse(guestInfo)
-            setCustomerInfo({
-              name: `${parsedInfo.firstName} ${parsedInfo.lastName}`,
-              email: parsedInfo.email,
-              phone: parsedInfo.phone || "N/A",
-              passportNumber: parsedInfo.passportNumber,
-              identityCardNumber: parsedInfo.identityCardNumber,
-            })
-
-            // Create a customer record for the guest if we don't have one yet
-            if (!finalCustomerId) {
-              const newCustomerId = await createGuestCustomer(parsedInfo)
-              if (newCustomerId) {
-                finalCustomerId = newCustomerId
-              }
-            }
-          }
-        }
-
-        // Mark data as loaded
-        setDataLoaded(true)
-
-        // Create booking and passengers if not already created
-        if (
-          !bookingId &&
-          !bookingCreated &&
-          parsedDepartureFlight &&
-          parsedDepartureSeat &&
-          parsedPassengers.length > 0 &&
-          finalCustomerId
-        ) {
-          console.log("Creating booking during initial load")
-          const success = await createBookingAndPassengers(
-            parsedDepartureFlight,
-            parsedDepartureSeat,
-            parsedReturnFlight,
-            parsedReturnSeat,
-            parsedPassengers,
-            finalCustomerId,
-          )
-
-          if (success) {
-            console.log("Successfully created booking during initial load")
-          } else {
-            console.error("Failed to create booking during initial load")
           }
         }
       } catch (err: any) {
@@ -393,50 +196,10 @@ export default function ConfirmationPage() {
     }
 
     loadBookingDetails()
-  }, [])
-
-  // Create a customer record for a guest user
-  const createGuestCustomer = async (guestInfo: any) => {
-    try {
-      if (!guestInfo) return null
-
-      // Create a new customer record
-      const { data: newCustomer, error: customerError } = await supabaseClient
-        .from("customers")
-        .insert({
-          firstname: guestInfo.firstName || "",
-          lastname: guestInfo.lastName || "",
-          email: guestInfo.email || "",
-          phonenumber: guestInfo.phone || null,
-        })
-        .select("customerid")
-        .single()
-
-      if (customerError) {
-        console.error("Error creating customer:", customerError)
-        return null
-      }
-
-      // Store the customer ID
-      setCustomerId(newCustomer.customerid)
-      sessionStorage.setItem("customerId", newCustomer.customerid)
-      console.log("Created customer ID:", newCustomer.customerid)
-
-      return newCustomer.customerid
-    } catch (err) {
-      console.error("Error creating guest customer:", err)
-      return null
-    }
-  }
+  }, [hydrated, store, dispatch])
 
   // Calculate total price - Fixed to properly calculate the total price
   const calculateTotalPrice = () => {
-    console.log("Calculating total price with:", {
-      departureFlight: departureFlight ? { price: departureFlight.price } : null,
-      returnFlight: returnFlight ? { price: returnFlight.price } : null,
-      passengers: passengers.length,
-    })
-
     let total = 0
     if (departureFlight && typeof departureFlight.price === "number") {
       total += departureFlight.price
@@ -455,187 +218,7 @@ export default function ConfirmationPage() {
       total = 1500000 // Default price if calculation fails
     }
 
-    console.log("Calculated total price:", total, "for", passengerCount, "passengers")
     return total
-  }
-
-  // Create booking and passenger records when the page loads
-  const createBookingAndPassengers = async (
-    departureFlight: SelectedFlightDetails,
-    departureSeat: Seat,
-    returnFlight: SelectedFlightDetails | null,
-    returnSeat: Seat | null,
-    passengers: PassengerInfo[],
-    customerId: string,
-  ) => {
-    try {
-      console.log("Creating booking and passengers with:", {
-        departureFlight: !!departureFlight,
-        departureSeat: !!departureSeat,
-        returnFlight: !!returnFlight,
-        returnSeat: !!returnSeat,
-        passengers: passengers.length,
-        customerId: customerId,
-      })
-
-      if (!departureFlight || !departureSeat) {
-        throw new Error("Flight or seat information is missing")
-      }
-
-      if (!passengers || passengers.length === 0) {
-        throw new Error("Passenger information is missing")
-      }
-
-      if (!customerId) {
-        throw new Error("Customer ID is missing")
-      }
-
-      // Get all departure and return seats
-      const allDepartureSeats = JSON.parse(sessionStorage.getItem("allDepartureSeats") || "null") || []
-      const allReturnSeats = JSON.parse(sessionStorage.getItem("allReturnSeats") || "null") || []
-
-      // Calculate the total price
-      const totalPrice = calculateTotalPrice()
-      console.log("Total price for booking:", totalPrice)
-
-      // Update existing booking record status to "Confirmed" instead of creating a new one
-      const bookingId = sessionStorage.getItem("bookingId")
-      if (!bookingId) {
-        throw new Error("Booking ID not found. Please try again.")
-      }
-
-      // Update the booking status to "Confirmed"
-      const { error: updateBookingError } = await supabaseClient
-        .from("bookings")
-        .update({
-          bookingstatus: "Confirmed",
-          totalprice: totalPrice, // Update the total price in case it changed
-        })
-        .eq("bookingid", bookingId)
-
-      if (updateBookingError) {
-        console.error("Error updating booking status:", updateBookingError)
-        throw new Error(`Error updating booking status: ${updateBookingError.message}`)
-      }
-
-      console.log("Updated booking status to Confirmed for ID:", bookingId)
-
-      // Create passenger records for each passenger
-      for (let i = 0; i < passengers.length; i++) {
-        const passenger = passengers[i]
-
-        // Get the appropriate seat for this passenger or use the first seat as fallback
-        const passengerDepartureSeat = allDepartureSeats.length > i ? allDepartureSeats[i] : departureSeat
-        const passengerReturnSeat = allReturnSeats.length > i ? allReturnSeats[i] : returnSeat
-
-        // Determine passenger type
-        let passengerType = "Adult"
-        const passengerTypesData = JSON.parse(sessionStorage.getItem("passengerTypes") || "{}")
-        if (i < passengerTypesData.adults) {
-          passengerType = "Adult"
-        } else if (i < passengerTypesData.adults + passengerTypesData.children) {
-          passengerType = "Child"
-        } else {
-          passengerType = "Infant"
-        }
-
-        // Create passenger record with only the required fields according to the schema
-        const { data: passengerData, error: passengerError } = await supabaseClient
-          .from("passengers")
-          .insert({
-            customerid: customerId,
-            bookingid: bookingId,
-            passengertype: passengerType,
-          })
-          .select("passengerid")
-          .single()
-
-        if (passengerError) {
-          console.error("Error creating passenger:", passengerError)
-          throw new Error(`Error creating passenger: ${passengerError.message}`)
-        }
-
-        if (!passengerData || !passengerData.passengerid) {
-          throw new Error("Failed to get passenger ID after creation")
-        }
-
-        console.log("Created passenger with ID:", passengerData.passengerid)
-
-        // Create ticket for departure flight
-        const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
-          bookingid: bookingId,
-          flightid: departureFlight.flightId,
-          passengerid: passengerData.passengerid,
-          seatid: passengerDepartureSeat.seatid,
-          status: "Confirmed", // Changed from ticketstatus to status
-          ticketprice: departureFlight.price,
-          classid: passengerDepartureSeat.classid,
-          ticketnumber: generateTicketNumber(),
-        })
-
-        if (departureTicketError) {
-          console.error("Error creating departure ticket:", departureTicketError)
-          throw new Error(`Error creating departure ticket: ${departureTicketError.message}`)
-        }
-
-        // Update flightseatoccupancy for departure seat
-        const { error: departureOccupancyError } = await supabaseClient.from("flightseatoccupancy").upsert(
-          {
-            flightid: departureFlight.flightId,
-            seatid: passengerDepartureSeat.seatid,
-            isoccupied: true,
-          },
-          { onConflict: "flightid,seatid" },
-        )
-
-        if (departureOccupancyError) {
-          console.error("Error updating departure seat occupancy:", departureOccupancyError)
-          throw new Error(`Error updating departure seat occupancy: ${departureOccupancyError.message}`)
-        }
-
-        // Create ticket for return flight if it exists
-        if (isRoundTrip && returnFlight && passengerReturnSeat) {
-          const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
-            bookingid: bookingId,
-            flightid: returnFlight.flightId,
-            passengerid: passengerData.passengerid,
-            seatid: passengerReturnSeat.seatid,
-            status: "Confirmed", // Changed from ticketstatus to status
-            ticketprice: returnFlight.price,
-            classid: passengerReturnSeat.classid,
-            ticketnumber: generateTicketNumber(),
-          })
-
-          if (returnTicketError) {
-            console.error("Error creating return ticket:", returnTicketError)
-            throw new Error(`Error creating return ticket: ${returnTicketError.message}`)
-          }
-
-          // Update flightseatoccupancy for return seat
-          const { error: returnOccupancyError } = await supabaseClient.from("flightseatoccupancy").upsert(
-            {
-              flightid: returnFlight.flightId,
-              seatid: passengerReturnSeat.seatid,
-              isoccupied: true,
-            },
-            { onConflict: "flightid,seatid" },
-          )
-
-          if (returnOccupancyError) {
-            console.error("Error updating return seat occupancy:", returnOccupancyError)
-            throw new Error(`Error updating return seat occupancy: ${returnOccupancyError.message}`)
-          }
-        }
-      }
-
-      setBookingCreated(true)
-      console.log("Booking and passengers created successfully")
-    } catch (err: any) {
-      console.error("Error creating booking and passengers:", err)
-      setError(err.message || "Failed to create booking. Please try again.")
-      return false
-    }
-    return true
   }
 
   // Generate a random booking reference
@@ -653,101 +236,33 @@ export default function ConfirmationPage() {
     return new Intl.NumberFormat("vi-VN").format(amount)
   }
 
-  // Check for duplicate passport or ID numbers
-  const checkForDuplicates = async (passengers: PassengerInfo[]) => {
-    const errors: { [key: string]: string } = {}
-
-    for (let i = 0; i < passengers.length; i++) {
-      const passenger = passengers[i]
-
-      // Check passport number
-      if (passenger.passportNumber) {
-        const { data: passportData, error: passportError } = await supabaseClient
-          .from("passengers")
-          .select("passengerid")
-          .eq("passportnumber", passenger.passportNumber)
-          .limit(1)
-
-        if (!passportError && passportData && passportData.length > 0) {
-          errors[`passenger_${i}_passport`] = "This passport number is already in use"
-        }
-      }
-
-      // Check identity card number
-      if (passenger.identityCardNumber) {
-        const { data: idCardData, error: idCardError } = await supabaseClient
-          .from("passengers")
-          .select("passengerid")
-          .eq("identitycardnumber", passenger.identityCardNumber)
-          .limit(1)
-
-        if (!idCardError && idCardData && idCardData.length > 0) {
-          errors[`passenger_${i}_idcard`] = "This identity card number is already in use"
-        }
-      }
-    }
-
-    return errors
-  }
-
-  // Generate a random ticket number
-  const generateTicketNumber = () => {
-    const prefix = "CA"
-    const randomDigits = Math.floor(Math.random() * 10000000)
-      .toString()
-      .padStart(7, "0")
-    return `${prefix}${randomDigits}`
-  }
-
-  // Update the handleContinueToPayment function to ensure booking is created before navigation
+  // Creates the booking on the server before moving on to payment. Customers, booking,
+  // passengers and tickets are written in a single database transaction.
   const handleContinueToPayment = async () => {
     try {
       setLoading(true)
       setError(null)
       setValidationErrors({})
 
-      // Check for duplicate passport/ID numbers
-      const duplicateErrors = await checkForDuplicates(passengers)
-      if (Object.keys(duplicateErrors).length > 0) {
-        setValidationErrors(duplicateErrors)
-        throw new Error("Some passenger information is already in use. Please check highlighted fields.")
-      }
-
-      // If booking hasn't been created yet, create it now
-      if (!bookingCreated && !existingBookingId && departureFlight && departureSeat && customerId) {
-        console.log("Creating booking before payment")
-        const success = await createBookingAndPassengers(
-          departureFlight,
-          departureSeat,
-          returnFlight,
-          returnSeat,
-          passengers,
-          customerId,
-        )
-
-        if (!success) {
-          throw new Error("Failed to create booking. Please try again.")
-        }
-
-        // Double check that booking ID is in session storage
-        const bookingId = sessionStorage.getItem("bookingId")
-        if (!bookingId) {
-          throw new Error("Booking ID not found. Please try again.")
-        }
-        console.log("Booking created successfully with ID:", bookingId)
-      } else if (!existingBookingId && !sessionStorage.getItem("bookingId")) {
+      if (!departureFlight || !departureSeat || passengers.length === 0) {
         throw new Error("Booking information is missing. Please try again.")
       }
 
-      // Store total price in session storage for payment page
-      sessionStorage.setItem("totalPrice", calculateTotalPrice().toString())
+      // Make sure the server has the latest version of the booking draft
+      await dispatch(flushDraft())
 
-      // Store contact information for email confirmation
-      if (contactInfo) {
-        sessionStorage.setItem("contactEmail", contactInfo.email)
-      } else if (customerInfo) {
-        sessionStorage.setItem("contactEmail", customerInfo.email)
-      }
+      const created = await api.post<{ bookingId: number; bookingReference: string; totalPrice: number }>(
+        "/api/bookings",
+      )
+
+      // Keep the booking details for the payment page
+      dispatch(
+        setBookingProgress({
+          bookingId: created.bookingId,
+          bookingReference: created.bookingReference,
+          totalPrice: created.totalPrice,
+        }),
+      )
 
       // Redirect to payment page
       router.push("/payment")
@@ -757,53 +272,6 @@ export default function ConfirmationPage() {
       setLoading(false)
     }
   }
-
-  // Effect to create booking once data is loaded
-  useEffect(() => {
-    const createBookingIfNeeded = async () => {
-      if (
-        dataLoaded &&
-        !bookingCreated &&
-        !existingBookingId &&
-        departureFlight &&
-        departureSeat &&
-        passengers.length > 0 &&
-        customerId
-      ) {
-        try {
-          console.log("Attempting to create booking from useEffect")
-          const success = await createBookingAndPassengers(
-            departureFlight,
-            departureSeat,
-            returnFlight,
-            returnSeat,
-            passengers,
-            customerId,
-          )
-
-          if (success) {
-            console.log("Successfully created booking from useEffect")
-          } else {
-            console.error("Failed to create booking from useEffect")
-          }
-        } catch (err) {
-          console.error("Error creating booking in effect:", err)
-        }
-      } else {
-        console.log("Skipping booking creation, conditions not met:", {
-          dataLoaded,
-          bookingCreated,
-          existingBookingId: !!existingBookingId,
-          departureFlight: !!departureFlight,
-          departureSeat: !!departureSeat,
-          passengersLength: passengers.length,
-          customerId: !!customerId,
-        })
-      }
-    }
-
-    createBookingIfNeeded()
-  }, [dataLoaded, bookingCreated, existingBookingId, departureFlight, departureSeat, passengers, customerId])
 
   if (loading) {
     return (
@@ -1027,11 +495,11 @@ export default function ConfirmationPage() {
                 <p className="font-medium mt-2">Seat(s)</p>
                 <p>
                   {(() => {
-                    // Get all departure seats from session storage
-                    const allDepartureSeatsData = sessionStorage.getItem("allDepartureSeats")
+                    // Get all departure seats from the store
+                    const allDepartureSeatsData = departureSeats.length > 0 ? departureSeats : null
                     if (allDepartureSeatsData) {
                       try {
-                        const allDepartureSeats = JSON.parse(allDepartureSeatsData)
+                        const allDepartureSeats = allDepartureSeatsData
                         if (Array.isArray(allDepartureSeats) && allDepartureSeats.length > 0) {
                           // Extract and join seat numbers
                           return allDepartureSeats
@@ -1080,11 +548,11 @@ export default function ConfirmationPage() {
                 <p className="font-medium mt-2">Seat(s)</p>
                 <p>
                   {(() => {
-                    // Get all return seats from session storage
-                    const allReturnSeatsData = sessionStorage.getItem("allReturnSeats")
+                    // Get all return seats from the store
+                    const allReturnSeatsData = returnSeats.length > 0 ? returnSeats : null
                     if (allReturnSeatsData) {
                       try {
-                        const allReturnSeats = JSON.parse(allReturnSeatsData)
+                        const allReturnSeats = allReturnSeatsData
                         if (Array.isArray(allReturnSeats) && allReturnSeats.length > 0) {
                           // Extract and join seat numbers
                           return allReturnSeats

@@ -12,7 +12,9 @@ import { ChevronRight, AlertCircle, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EnhancedDatePicker } from "@/components/ui/enhanced-date-picker"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setBookingProgress, setPassengers as storePassengers } from "@/lib/store/slices/bookingSlices"
 
 interface GuestInformation {
   firstName: string
@@ -31,6 +33,9 @@ interface GuestInformation {
 
 export default function GuestInformationPage() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
   const [passengers, setPassengers] = useState<GuestInformation[]>([])
   const [currentPassengerIndex, setCurrentPassengerIndex] = useState(0)
   const [totalPassengers, setTotalPassengers] = useState(1)
@@ -40,17 +45,18 @@ export default function GuestInformationPage() {
   const [passengerTypes, setPassengerTypes] = useState({ adults: 1, children: 0, infants: 0 })
   const [userDataAttempted, setUserDataAttempted] = useState(false) // New state for controlling user data fetch
 
-  // Effect 1: Initialize passengers array (runs once on mount)
+  // Effect 1: Initialize passengers array (runs once, when the store is ready)
   useEffect(() => {
+    if (!hydrated) return
+
     // Try to get passenger count from URL parameters first
     const searchParams = new URLSearchParams(window.location.search)
     const urlAdults = Number.parseInt(searchParams.get("adults") || "0")
     const urlChildren = Number.parseInt(searchParams.get("children") || "0")
     const urlInfants = Number.parseInt(searchParams.get("infants") || "0")
 
-    // Then try to get from session storage
-    const storedPassengerDetails = sessionStorage.getItem("passengerDetails")
-    const storedTotalPassengers = sessionStorage.getItem("totalPassengers")
+    // Then try to get from the store
+    const details = store.getState().search
 
     let adults = 1
     let children = 0
@@ -64,22 +70,12 @@ export default function GuestInformationPage() {
       infants = urlInfants || 0
       total = adults + children + infants
     }
-    // Otherwise use session storage if available
-    else if (storedPassengerDetails) {
-      try {
-        const details = JSON.parse(storedPassengerDetails)
-        adults = details.adults || 1
-        children = details.children || 0
-        infants = details.infants || 0
-        total = adults + children + infants
-      } catch (e) {
-        console.error("Error parsing passenger details from session storage:", e)
-      }
-    }
-    // Or use stored total if available
-    else if (storedTotalPassengers) {
-      total = Number.parseInt(storedTotalPassengers, 10) || 1
-      adults = total // Default to all adults if we only have total
+    // Otherwise use the stored passenger details if available
+    else if (details) {
+      adults = details.adults || 1
+      children = details.children || 0
+      infants = details.infants || 0
+      total = adults + children + infants
     }
 
     setPassengerTypes({
@@ -119,13 +115,14 @@ export default function GuestInformationPage() {
       })
 
     setPassengers(initialPassengers)
-  }, []) // Empty dependency array ensures this runs once on mount
+  }, [hydrated, store])
 
   // Effect 2: Fetch logged-in user data if available (runs once after passengers are initialized)
   useEffect(() => {
     const fetchAndPopulateUserData = async () => {
-      const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
-      const userEmail = sessionStorage.getItem("userEmail")
+      const authUser = store.getState().auth.user
+      const isLoggedIn = !!authUser
+      const userEmail = authUser?.email
 
       // If not logged in or no email, no need to fetch. Mark as attempted.
       if (!isLoggedIn || !userEmail) {
@@ -134,25 +131,12 @@ export default function GuestInformationPage() {
       }
 
       try {
-        // First get the user record
-        const { data: userData, error: userError } = await supabaseClient
-          .from("users")
-          .select("userid, customerid")
-          .eq("username", userEmail)
-          .single()
-
-        if (userError) throw userError
+        // Get the customer details of the logged-in user
+        const profile = await api.get<{ customerDetails: any; ids: { userId: number; customerId: number } }>("/api/profile")
+        const userData = { userid: profile.ids.userId, customerid: profile.ids.customerId }
+        const customerData = profile.customerDetails
 
         if (userData && userData.customerid) {
-          // Then get the customer details
-          const { data: customerData, error: customerError } = await supabaseClient
-            .from("customers")
-            .select("*")
-            .eq("customerid", userData.customerid)
-            .single()
-
-          if (customerError) throw customerError
-
           if (customerData) {
             // ---- MODIFIED PHONE NUMBER FORMATTING LOGIC ----
             let formattedPhone = customerData.phonenumber || ""
@@ -203,10 +187,6 @@ export default function GuestInformationPage() {
               }
               return updatedPassengers
             })
-
-            // Store customer ID for later use
-            sessionStorage.setItem("customerId", userData.customerid)
-            sessionStorage.setItem("userId", userData.userid)
           }
         }
       } catch (err) {
@@ -393,133 +373,15 @@ export default function GuestInformationPage() {
     setGeneralError(null)
 
     try {
-      // Store all passengers information in session storage
-      sessionStorage.setItem("passengers", JSON.stringify(passengers))
+      // Keep all passengers information in the store. Nothing is written to the database yet:
+      // customers, booking, passengers and tickets are created together in one transaction
+      // when the booking is confirmed for payment.
+      dispatch(storePassengers(passengers))
 
-      // Create customer records for all passengers
-      const customerIds = []
-
-      for (const passenger of passengers) {
-        let customerId = passenger.customerId // Use existing customer ID if available
-
-        if (!customerId) {
-          // Only create a new customer record if we don't have an existing ID
-          try {
-            const { data: customerData, error: customerError } = await supabaseClient
-              .from("customers")
-              .insert({
-                firstname: passenger.firstName,
-                lastname: passenger.lastName,
-                email: passenger.email || passengers[0].email, // Use first passenger's email if not provided
-                phonenumber: passenger.phone || passengers[0].phone, // Use first passenger's phone if not provided
-                dateofbirth: passenger.dateOfBirth,
-                nationality: passenger.nationality,
-                passportnumber: passenger.passportNumber,
-                passportexpiry: passenger.passportExpiry,
-                // Only include identitycardnumber if it's provided
-                ...(passenger.identityCardNumber ? { identitycardnumber: passenger.identityCardNumber } : {}),
-                pronoun: passenger.pronoun,
-                // Add default values for required fields that aren't in the form
-                gender: "Not specified",
-                country: passenger.nationality, // Use nationality as default country
-                city: "Not specified",
-              })
-              .select("customerid")
-              .single()
-
-            if (customerError) {
-              throw new Error(customerError.message)
-            }
-
-            customerId = customerData.customerid
-          } catch (err: any) {
-            // If there's a unique constraint error, try to find the existing customer
-            if (err.message && err.message.includes("unique constraint")) {
-              // Try to find the existing customer by identitycardnumber if provided
-              if (passenger.identityCardNumber) {
-                const { data: existingCustomer, error: findError } = await supabaseClient
-                  .from("customers")
-                  .select("customerid")
-                  .eq("identitycardnumber", passenger.identityCardNumber)
-                  .single()
-
-                if (!findError && existingCustomer) {
-                  customerId = existingCustomer.customerid
-                } else {
-                  throw new Error(`Could not find or create customer record for ${passenger.firstName}: ${err.message}`)
-                }
-              } else {
-                // Try to find by other unique identifiers like passport number
-                const { data: existingCustomer, error: findError } = await supabaseClient
-                  .from("customers")
-                  .select("customerid")
-                  .eq("passportnumber", passenger.passportNumber)
-                  .eq("firstname", passenger.firstName)
-                  .eq("lastname", passenger.lastName)
-                  .single()
-
-                if (!findError && existingCustomer) {
-                  customerId = existingCustomer.customerid
-                } else {
-                  throw new Error(`Could not find or create customer record for ${passenger.firstName}: ${err.message}`)
-                }
-              }
-            } else {
-              throw err
-            }
-          }
-        }
-
-        if (!customerId) {
-          throw new Error(`Failed to get customer ID for passenger ${passenger.firstName}`)
-        }
-
-        customerIds.push(customerId)
-      }
-
-      // Store customer IDs in session storage
-      sessionStorage.setItem("customerIds", JSON.stringify(customerIds))
-      sessionStorage.setItem("primaryCustomerId", customerIds[0])
-
-      // Create a booking record immediately
+      // The reference and price shown on the following steps
       const bookingReference = generateBookingReference()
-      const totalPrice = calculateInitialPrice() // Add this function
-      const { data: bookingData, error: bookingError } = await supabaseClient
-        .from("bookings")
-        .insert({
-          bookingdatetime: new Date().toISOString(),
-          bookingstatus: "Pending",
-          totalprice: totalPrice,
-          currencycode: "VND",
-          bookingreference: bookingReference,
-          userid: sessionStorage.getItem("userId") || null, // Will be updated if user is logged in
-        })
-        .select("bookingid")
-        .single()
-
-      if (bookingError) {
-        throw new Error(`Error creating booking: ${bookingError.message}`)
-      }
-
-      // Store booking ID and reference in session storage
-      sessionStorage.setItem("bookingId", bookingData.bookingid)
-      sessionStorage.setItem("bookingReference", bookingReference)
-
-      // Create passenger records for each customer
-      for (let i = 0; i < customerIds.length; i++) {
-        const customerId = customerIds[i]
-        const passengerType = passengers[i]?.passengerType || "Adult"
-
-        const { error: passengerError } = await supabaseClient.from("passengers").insert({
-          customerid: customerId,
-          bookingid: bookingData.bookingid,
-          passengertype: passengerType,
-        })
-
-        if (passengerError) {
-          throw new Error(`Error creating passenger: ${passengerError.message}`)
-        }
-      }
+      const totalPrice = calculateInitialPrice()
+      dispatch(setBookingProgress({ bookingReference, totalPrice }))
 
       // Redirect to contact information page
       router.push("/contact-information")
@@ -541,9 +403,8 @@ export default function GuestInformationPage() {
   }
 
   const calculateInitialPrice = () => {
-    // Get flight prices from session storage
-    const departureFlight = JSON.parse(sessionStorage.getItem("selectedDepartureFlight") || "null")
-    const returnFlight = JSON.parse(sessionStorage.getItem("selectedReturnFlight") || "null")
+    // Get flight prices from the store
+    const { departure: departureFlight, return: returnFlight } = store.getState().flights
 
     let total = 0
     if (departureFlight && typeof departureFlight.price === "number") {

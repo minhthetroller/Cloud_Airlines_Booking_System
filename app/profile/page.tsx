@@ -105,11 +105,6 @@ export default function ProfilePage() {
       setFormData(data.customerDetails)
       setBookings(data.recentBookings)
 
-      // Store IDs in session storage for later use
-      if (data.ids) {
-        sessionStorage.setItem("userId", data.ids.userId)
-        sessionStorage.setItem("customerId", data.ids.customerId)
-      }
     } catch (err: any) {
       console.error("Error fetching user data:", err)
       setError(err.response?.data?.error || "Failed to load profile data. Please try again.")
@@ -158,7 +153,7 @@ export default function ProfilePage() {
       // Only update if there are changes
       if (Object.keys(updateData).length > 0) {
         const response = await axios.put('/api/profile', {
-          userId: sessionStorage.getItem("userId"),
+          userId: user.id,
           customerDetails: updateData,
         })
       }

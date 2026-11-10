@@ -1,0 +1,1546 @@
+{
+  "id": "52b95ceb-fda0-43e9-863a-1b36481deb27",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.airplanes": {
+      "name": "airplanes",
+      "schema": "",
+      "columns": {
+        "airplaneid": {
+          "name": "airplaneid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "airplanetypeid": {
+          "name": "airplanetypeid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registrationnumber": {
+          "name": "registrationnumber",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "airplanes_airplanetypeid_airplanetypes_airplanetypeid_fk": {
+          "name": "airplanes_airplanetypeid_airplanetypes_airplanetypeid_fk",
+          "tableFrom": "airplanes",
+          "tableTo": "airplanetypes",
+          "columnsFrom": [
+            "airplanetypeid"
+          ],
+          "columnsTo": [
+            "airplanetypeid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.airplanetypes": {
+      "name": "airplanetypes",
+      "schema": "",
+      "columns": {
+        "airplanetypeid": {
+          "name": "airplanetypeid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "modelname": {
+          "name": "modelname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "manufacturer": {
+          "name": "manufacturer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalseats": {
+          "name": "totalseats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.airports": {
+      "name": "airports",
+      "schema": "",
+      "columns": {
+        "airportcode": {
+          "name": "airportcode",
+          "type": "varchar(3)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "airportname": {
+          "name": "airportname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bookings": {
+      "name": "bookings",
+      "schema": "",
+      "columns": {
+        "bookingid": {
+          "name": "bookingid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "bookingdatetime": {
+          "name": "bookingdatetime",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "bookingstatus": {
+          "name": "bookingstatus",
+          "type": "booking_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Pending'"
+        },
+        "totalprice": {
+          "name": "totalprice",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currencycode": {
+          "name": "currencycode",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'VND'"
+        },
+        "bookingreference": {
+          "name": "bookingreference",
+          "type": "varchar(6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "bookings_reference_uq": {
+          "name": "bookings_reference_uq",
+          "columns": [
+            {
+              "expression": "bookingreference",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bookings_user_datetime_idx": {
+          "name": "bookings_user_datetime_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookingdatetime",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bookings_pending_expiry_idx": {
+          "name": "bookings_pending_expiry_idx",
+          "columns": [
+            {
+              "expression": "expiresat",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"bookings\".\"bookingstatus\" = 'Pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bookings_userid_users_userid_fk": {
+          "name": "bookings_userid_users_userid_fk",
+          "tableFrom": "bookings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "userid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.customers": {
+      "name": "customers",
+      "schema": "",
+      "columns": {
+        "customerid": {
+          "name": "customerid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "firstname": {
+          "name": "firstname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lastname": {
+          "name": "lastname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phonenumber": {
+          "name": "phonenumber",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dateofbirth": {
+          "name": "dateofbirth",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gender": {
+          "name": "gender",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nationality": {
+          "name": "nationality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "passportnumber": {
+          "name": "passportnumber",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "passportexpiry": {
+          "name": "passportexpiry",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "identitycardnumber": {
+          "name": "identitycardnumber",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pronoun": {
+          "name": "pronoun",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "addressline": {
+          "name": "addressline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contactname": {
+          "name": "contactname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contactemail": {
+          "name": "contactemail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contactphone": {
+          "name": "contactphone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "customers_identitycard_uq": {
+          "name": "customers_identitycard_uq",
+          "columns": [
+            {
+              "expression": "identitycardnumber",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"customers\".\"identitycardnumber\" is not null and \"customers\".\"identitycardnumber\" <> ''",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "customers_passport_idx": {
+          "name": "customers_passport_idx",
+          "columns": [
+            {
+              "expression": "passportnumber",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "customers_email_idx": {
+          "name": "customers_email_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.flightprices": {
+      "name": "flightprices",
+      "schema": "",
+      "columns": {
+        "flightpriceid": {
+          "name": "flightpriceid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "flightid": {
+          "name": "flightid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classid": {
+          "name": "classid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currencycode": {
+          "name": "currencycode",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'VND'"
+        }
+      },
+      "indexes": {
+        "flightprices_flight_class_uq": {
+          "name": "flightprices_flight_class_uq",
+          "columns": [
+            {
+              "expression": "flightid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "classid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "flightprices_flightid_flights_flightid_fk": {
+          "name": "flightprices_flightid_flights_flightid_fk",
+          "tableFrom": "flightprices",
+          "tableTo": "flights",
+          "columnsFrom": [
+            "flightid"
+          ],
+          "columnsTo": [
+            "flightid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "flightprices_classid_ticketclasses_classid_fk": {
+          "name": "flightprices_classid_ticketclasses_classid_fk",
+          "tableFrom": "flightprices",
+          "tableTo": "ticketclasses",
+          "columnsFrom": [
+            "classid"
+          ],
+          "columnsTo": [
+            "classid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.flights": {
+      "name": "flights",
+      "schema": "",
+      "columns": {
+        "flightid": {
+          "name": "flightid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "flightnumber": {
+          "name": "flightnumber",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "departureairportcode": {
+          "name": "departureairportcode",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "arrivalairportcode": {
+          "name": "arrivalairportcode",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "departuredatetime": {
+          "name": "departuredatetime",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "arrivaldatetime": {
+          "name": "arrivaldatetime",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Scheduled'"
+        },
+        "travelmiles": {
+          "name": "travelmiles",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "airplaneid": {
+          "name": "airplaneid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "flights_route_departure_idx": {
+          "name": "flights_route_departure_idx",
+          "columns": [
+            {
+              "expression": "departureairportcode",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "arrivalairportcode",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "departuredatetime",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "flights_departureairportcode_airports_airportcode_fk": {
+          "name": "flights_departureairportcode_airports_airportcode_fk",
+          "tableFrom": "flights",
+          "tableTo": "airports",
+          "columnsFrom": [
+            "departureairportcode"
+          ],
+          "columnsTo": [
+            "airportcode"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "flights_arrivalairportcode_airports_airportcode_fk": {
+          "name": "flights_arrivalairportcode_airports_airportcode_fk",
+          "tableFrom": "flights",
+          "tableTo": "airports",
+          "columnsFrom": [
+            "arrivalairportcode"
+          ],
+          "columnsTo": [
+            "airportcode"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "flights_airplaneid_airplanes_airplaneid_fk": {
+          "name": "flights_airplaneid_airplanes_airplaneid_fk",
+          "tableFrom": "flights",
+          "tableTo": "airplanes",
+          "columnsFrom": [
+            "airplaneid"
+          ],
+          "columnsTo": [
+            "airplaneid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.passengers": {
+      "name": "passengers",
+      "schema": "",
+      "columns": {
+        "passengerid": {
+          "name": "passengerid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "customerid": {
+          "name": "customerid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bookingid": {
+          "name": "bookingid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passengertype": {
+          "name": "passengertype",
+          "type": "passenger_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Adult'"
+        }
+      },
+      "indexes": {
+        "passengers_booking_idx": {
+          "name": "passengers_booking_idx",
+          "columns": [
+            {
+              "expression": "bookingid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "passengers_customer_idx": {
+          "name": "passengers_customer_idx",
+          "columns": [
+            {
+              "expression": "customerid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "passengers_customerid_customers_customerid_fk": {
+          "name": "passengers_customerid_customers_customerid_fk",
+          "tableFrom": "passengers",
+          "tableTo": "customers",
+          "columnsFrom": [
+            "customerid"
+          ],
+          "columnsTo": [
+            "customerid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "passengers_bookingid_bookings_bookingid_fk": {
+          "name": "passengers_bookingid_bookings_bookingid_fk",
+          "tableFrom": "passengers",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "bookingid"
+          ],
+          "columnsTo": [
+            "bookingid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.payments": {
+      "name": "payments",
+      "schema": "",
+      "columns": {
+        "paymentid": {
+          "name": "paymentid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "bookingid": {
+          "name": "bookingid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "paymentdatetime": {
+          "name": "paymentdatetime",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currencycode": {
+          "name": "currencycode",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'VND'"
+        },
+        "paymentmethod": {
+          "name": "paymentmethod",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Credit Card'"
+        },
+        "paymentstatus": {
+          "name": "paymentstatus",
+          "type": "payment_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Pending'"
+        },
+        "transactionid": {
+          "name": "transactionid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stripesessionid": {
+          "name": "stripesessionid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "payments_booking_idx": {
+          "name": "payments_booking_idx",
+          "columns": [
+            {
+              "expression": "bookingid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "paymentdatetime",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payments_transaction_uq": {
+          "name": "payments_transaction_uq",
+          "columns": [
+            {
+              "expression": "transactionid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payments_stripe_session_uq": {
+          "name": "payments_stripe_session_uq",
+          "columns": [
+            {
+              "expression": "stripesessionid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "payments_bookingid_bookings_bookingid_fk": {
+          "name": "payments_bookingid_bookings_bookingid_fk",
+          "tableFrom": "payments",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "bookingid"
+          ],
+          "columnsTo": [
+            "bookingid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.seats": {
+      "name": "seats",
+      "schema": "",
+      "columns": {
+        "seatid": {
+          "name": "seatid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "airplanetypeid": {
+          "name": "airplanetypeid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seatnumber": {
+          "name": "seatnumber",
+          "type": "varchar(4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classid": {
+          "name": "classid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seattype": {
+          "name": "seattype",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'standard'"
+        }
+      },
+      "indexes": {
+        "seats_type_number_uq": {
+          "name": "seats_type_number_uq",
+          "columns": [
+            {
+              "expression": "airplanetypeid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seatnumber",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "seats_type_class_idx": {
+          "name": "seats_type_class_idx",
+          "columns": [
+            {
+              "expression": "airplanetypeid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "classid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "seats_airplanetypeid_airplanetypes_airplanetypeid_fk": {
+          "name": "seats_airplanetypeid_airplanetypes_airplanetypeid_fk",
+          "tableFrom": "seats",
+          "tableTo": "airplanetypes",
+          "columnsFrom": [
+            "airplanetypeid"
+          ],
+          "columnsTo": [
+            "airplanetypeid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "seats_classid_ticketclasses_classid_fk": {
+          "name": "seats_classid_ticketclasses_classid_fk",
+          "tableFrom": "seats",
+          "tableTo": "ticketclasses",
+          "columnsFrom": [
+            "classid"
+          ],
+          "columnsTo": [
+            "classid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "sessionid": {
+          "name": "sessionid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires": {
+          "name": "expires",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "sessions_token_uq": {
+          "name": "sessions_token_uq",
+          "columns": [
+            {
+              "expression": "token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sessions_user_idx": {
+          "name": "sessions_user_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sessions_userid_users_userid_fk": {
+          "name": "sessions_userid_users_userid_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "userid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ticketclasses": {
+      "name": "ticketclasses",
+      "schema": "",
+      "columns": {
+        "classid": {
+          "name": "classid",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "classname": {
+          "name": "classname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cabintype": {
+          "name": "cabintype",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bookingcodeinfo": {
+          "name": "bookingcodeinfo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seatselectioninfo": {
+          "name": "seatselectioninfo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checkedbagageinfo": {
+          "name": "checkedbagageinfo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mileagemultiplier": {
+          "name": "mileagemultiplier",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "upgraderules": {
+          "name": "upgraderules",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reissuefeedefaultamount": {
+          "name": "reissuefeedefaultamount",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reissuefeedefaultcurr": {
+          "name": "reissuefeedefaultcurr",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refundfeedefaultamount": {
+          "name": "refundfeedefaultamount",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refundfeedefaultcurr": {
+          "name": "refundfeedefaultcurr",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tickets": {
+      "name": "tickets",
+      "schema": "",
+      "columns": {
+        "ticketid": {
+          "name": "ticketid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "bookingid": {
+          "name": "bookingid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flightid": {
+          "name": "flightid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passengerid": {
+          "name": "passengerid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seatid": {
+          "name": "seatid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classid": {
+          "name": "classid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "ticket_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Pending'"
+        },
+        "ticketprice": {
+          "name": "ticketprice",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ticketnumber": {
+          "name": "ticketnumber",
+          "type": "varchar(12)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "tickets_flight_seat_active_uq": {
+          "name": "tickets_flight_seat_active_uq",
+          "columns": [
+            {
+              "expression": "flightid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seatid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"tickets\".\"status\" <> 'Cancelled'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tickets_number_uq": {
+          "name": "tickets_number_uq",
+          "columns": [
+            {
+              "expression": "ticketnumber",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tickets_booking_idx": {
+          "name": "tickets_booking_idx",
+          "columns": [
+            {
+              "expression": "bookingid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tickets_passenger_idx": {
+          "name": "tickets_passenger_idx",
+          "columns": [
+            {
+              "expression": "passengerid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tickets_bookingid_bookings_bookingid_fk": {
+          "name": "tickets_bookingid_bookings_bookingid_fk",
+          "tableFrom": "tickets",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "bookingid"
+          ],
+          "columnsTo": [
+            "bookingid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tickets_flightid_flights_flightid_fk": {
+          "name": "tickets_flightid_flights_flightid_fk",
+          "tableFrom": "tickets",
+          "tableTo": "flights",
+          "columnsFrom": [
+            "flightid"
+          ],
+          "columnsTo": [
+            "flightid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tickets_passengerid_passengers_passengerid_fk": {
+          "name": "tickets_passengerid_passengers_passengerid_fk",
+          "tableFrom": "tickets",
+          "tableTo": "passengers",
+          "columnsFrom": [
+            "passengerid"
+          ],
+          "columnsTo": [
+            "passengerid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tickets_seatid_seats_seatid_fk": {
+          "name": "tickets_seatid_seats_seatid_fk",
+          "tableFrom": "tickets",
+          "tableTo": "seats",
+          "columnsFrom": [
+            "seatid"
+          ],
+          "columnsTo": [
+            "seatid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tickets_classid_ticketclasses_classid_fk": {
+          "name": "tickets_classid_ticketclasses_classid_fk",
+          "tableFrom": "tickets",
+          "tableTo": "ticketclasses",
+          "columnsFrom": [
+            "classid"
+          ],
+          "columnsTo": [
+            "classid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "userid": {
+          "name": "userid",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "customerid": {
+          "name": "customerid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passwordhash": {
+          "name": "passwordhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "pointsavailable": {
+          "name": "pointsavailable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "accountstatus": {
+          "name": "accountstatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unverified'"
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "dateregistered": {
+          "name": "dateregistered",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "verification_token": {
+          "name": "verification_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reset_token": {
+          "name": "reset_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reset_expires": {
+          "name": "reset_expires",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "users_username_uq": {
+          "name": "users_username_uq",
+          "columns": [
+            {
+              "expression": "username",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "users_customerid_customers_customerid_fk": {
+          "name": "users_customerid_customers_customerid_fk",
+          "tableFrom": "users",
+          "tableTo": "customers",
+          "columnsFrom": [
+            "customerid"
+          ],
+          "columnsTo": [
+            "customerid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.booking_status": {
+      "name": "booking_status",
+      "schema": "public",
+      "values": [
+        "Pending",
+        "Confirmed",
+        "Cancelled",
+        "Expired"
+      ]
+    },
+    "public.passenger_type": {
+      "name": "passenger_type",
+      "schema": "public",
+      "values": [
+        "Adult",
+        "Child",
+        "Infant"
+      ]
+    },
+    "public.payment_status": {
+      "name": "payment_status",
+      "schema": "public",
+      "values": [
+        "Pending",
+        "Completed",
+        "Cancelled",
+        "Expired"
+      ]
+    },
+    "public.ticket_status": {
+      "name": "ticket_status",
+      "schema": "public",
+      "values": [
+        "Pending",
+        "Confirmed",
+        "Cancelled"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

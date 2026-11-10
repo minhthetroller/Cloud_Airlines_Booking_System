@@ -9,12 +9,16 @@ import LoginModal from "@/components/login-modal"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks"
+import { setJustLoggedIn } from "@/lib/store/slices/authSlice"
 import { useLanguage } from "@/lib/language-context"
 import LanguageSelector from "@/components/language-selector"
 
 export default function Home() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
   const { user, isAuthenticated, signOut, loading } = useAuth()
+  const dispatch = useAppDispatch()
+  const justLoggedIn = useAppSelector((state) => state.auth.justLoggedIn)
   const router = useRouter()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
@@ -43,13 +47,12 @@ export default function Home() {
   // Effect to redirect to profile after login
   useEffect(() => {
     if (isAuthenticated && user) {
-      const justLoggedIn = sessionStorage.getItem("justLoggedIn")
-      if (justLoggedIn === "true") {
-        sessionStorage.removeItem("justLoggedIn")
+      if (justLoggedIn) {
+        dispatch(setJustLoggedIn(false))
         router.push("/profile")
       }
     }
-  }, [isAuthenticated, user, router])
+  }, [isAuthenticated, user, router, justLoggedIn, dispatch])
 
   useEffect(() => {
     if (!userMenuOpen) {

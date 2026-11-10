@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: cabs-postgres
+    environment:
+      POSTGRES_USER: cabs
+      POSTGRES_PASSWORD: cabs
+      POSTGRES_DB: cabs
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - cabs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cabs -d cabs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cabs-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  cabs_pgdata:

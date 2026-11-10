@@ -1,5 +1,7 @@
 "use client"
 
+import { useAppDispatch } from "@/lib/store/hooks"
+import { setRegistration } from "@/lib/store/slices/registrationSlice"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -15,6 +17,7 @@ export default function ManualVerificationPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const dispatch = useAppDispatch()
 
   const handleVerify = () => {
     if (!token) {
@@ -31,9 +34,8 @@ export default function ManualVerificationPage() {
     setError(null)
 
     try {
-      // Store token and email in session storage
-      sessionStorage.setItem("registrationToken", token)
-      sessionStorage.setItem("registrationEmail", email)
+      // Keep token and email in the store
+      dispatch(setRegistration({ token, email }))
 
       // Redirect to password creation page with both token and email
       router.push(`/register/set-password?token=${token}&email=${encodeURIComponent(email)}`)

@@ -1,5 +1,7 @@
 "use client"
 
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setRegistration } from "@/lib/store/slices/registrationSlice"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -23,21 +25,22 @@ export default function DetailsPage() {
   const [country, setCountry] = useState("")
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
 
   const [passportNumber, setPassportNumber] = useState("")
   const [passportExpiry, setPassportExpiry] = useState("")
 
   // Check if previous steps are completed
   useEffect(() => {
-    const email = sessionStorage.getItem("registrationEmail")
-    const firstName = sessionStorage.getItem("registrationFirstName")
-    const lastName = sessionStorage.getItem("registrationLastName")
-    const title = sessionStorage.getItem("registrationTitle")
+    if (!hydrated) return
+    const { email, firstName, lastName, title } = store.getState().registration
 
     if (!email || !firstName || !lastName || !title) {
       router.push("/register")
     }
-  }, [router])
+  }, [router, hydrated, store])
 
   const handleSubmit = async () => {
     // Validate inputs
@@ -82,11 +85,12 @@ export default function DetailsPage() {
     }
 
     try {
-      // Get email and name from session storage
-      const email = sessionStorage.getItem("registrationEmail") || ""
-      const firstName = sessionStorage.getItem("registrationFirstName") || ""
-      const lastName = sessionStorage.getItem("registrationLastName") || ""
-      const title = sessionStorage.getItem("registrationTitle") || ""
+      // Get email and name from the store
+      const registration = store.getState().registration
+      const email = registration.email || ""
+      const firstName = registration.firstName || ""
+      const lastName = registration.lastName || ""
+      const title = registration.title || ""
 
       // Create customer data object
       const customerData = {
@@ -105,14 +109,12 @@ export default function DetailsPage() {
         passportExpiry,
       }
 
-      // Store customer data in session storage
-      sessionStorage.setItem("customerData", JSON.stringify(customerData))
 
       // Generate a unique token for verification
       const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
 
-      // Store token in session storage
-      sessionStorage.setItem("registrationToken", token)
+      // Keep customer data and token in the store
+      dispatch(setRegistration({ customerData, token }))
 
       // Navigate to the confirmation page
       router.push("/register/confirmation")

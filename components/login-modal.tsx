@@ -12,10 +12,10 @@ import { Eye, EyeOff, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase/supabaseClient"
 import { useRouter } from "next/navigation"
-import { v4 as uuidv4 } from "uuid"
-import { sha256 } from "js-sha256"
+import { useAppDispatch } from "@/lib/store/hooks"
+import { login } from "@/lib/store/session"
+import { setJustLoggedIn } from "@/lib/store/slices/authSlice"
 import axios from "axios"
 
 interface LoginModalProps {
@@ -35,17 +35,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
   const [forgotPasswordMessage, setForgotPasswordMessage] = useState<string | null>(null)
   const router = useRouter()
+  const dispatch = useAppDispatch()
 
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [isLocked, setIsLocked] = useState(false)
   const [lockoutTime, setLockoutTime] = useState<Date | null>(null)
-
-  // Cookie helper functions
-  function setCookie(name: string, value: string, days: number) {
-    const expires = new Date()
-    expires.setDate(expires.getDate() + days)
-    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Strict`
-  }
 
   const checkLockout = () => {
     if (lockoutTime && new Date() < lockoutTime) {
@@ -77,62 +71,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setError(null)
 
     try {
-      // Hash the password for comparison
-      const hashedPassword = sha256(password)
-
-      // Check if the user exists and password matches
-      const { data: userCheck, error: userCheckError } = await supabaseClient
-        .from("users")
-        .select("*")
-        .eq("username", email)
-        .single()
-
-      if (userCheckError) {
-        console.error("User check error:", userCheckError)
-        throw new Error("Invalid email or password")
-      }
-
-      // Check if the account is verified
-      if (userCheck.accountstatus !== "verified") {
-        throw new Error("Please verify your account before logging in")
-      }
-
-      // Compare hashed passwords
-      if (userCheck.passwordhash !== hashedPassword) {
-        throw new Error("Invalid email or password")
-      }
-
-      // Generate a session token
-      const token = uuidv4()
-
-      // Set expiration date (30 days from now or 1 day if not remember me)
-      const expires = new Date()
-      expires.setDate(expires.getDate() + (rememberMe ? 30 : 1))
-
-      // Delete any existing sessions for this user
-      await supabaseClient.from("sessions").delete().eq("userid", userCheck.userid)
-
-      // Create a new session in the database
-      const { error: sessionError } = await supabaseClient.from("sessions").insert({
-        userid: userCheck.userid,
-        token: token,
-        expires: expires.toISOString(),
-      })
-
-      if (sessionError) {
-        console.error("Session creation error:", sessionError)
-        throw new Error("Failed to create session")
-      }
-
-      // Store session token in cookie
-      setCookie("session_token", token, rememberMe ? 30 : 1)
+      // Credentials are checked on the server, which also sets the httpOnly session cookie
+      // (30 days, or 1 day if not remember me)
+      await dispatch(login(email, password, rememberMe))
 
       // Successfully logged in
       onClose()
 
-      sessionStorage.setItem("isLoggedIn", "true")
-      sessionStorage.setItem("userEmail", email)
-      sessionStorage.setItem("justLoggedIn", "true")
+      dispatch(setJustLoggedIn(true))
 
       // Force a refresh of the page to ensure auth state is updated
       window.location.href = "/profile"
@@ -175,35 +121,6 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setForgotPasswordMessage(null)
 
     try {
-      // Check if user exists
-      const { data: userCheck, error: userCheckError } = await supabaseClient
-        .from("users")
-        .select("userid, username")
-        .eq("username", forgotPasswordEmail)
-        .single()
-
-      if (userCheckError) {
-        throw new Error("Email address not found")
-      }
-
-      // Generate reset token
-      // const resetToken = uuidv4()
-      // const expires = new Date()
-      // expires.setHours(expires.getHours() + 1) // Token expires in 1 hour
-
-      // Store reset token in database
-      // const { error: tokenError } = await supabaseClient.from("password_resets").insert({
-      //   userid: userCheck.userid,
-      //   token: resetToken,
-      //   expires: expires.toISOString(),
-      //   used: false,
-      // })
-
-      // if (tokenError) {
-      //   console.error("Token creation error:", tokenError)
-      //   throw new Error("Failed to create reset token")
-      // }
-
       // Send reset email
       const response = await axios.post("/api/send-password-reset", {
         email: forgotPasswordEmail,
@@ -213,7 +130,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       setForgotPasswordEmail("")
     } catch (err: any) {
       console.error("Forgot password error:", err)
-      setError(err.message || "Failed to send password reset email")
+      setError(err.response?.data?.error || err.message || "Failed to send password reset email")
     } finally {
       setForgotPasswordLoading(false)
     }

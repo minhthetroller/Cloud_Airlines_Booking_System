@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Check, ArrowLeft, Home } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { discardBooking } from "@/lib/store/session"
 import axios from "axios"
 
 interface Ticket {
@@ -46,8 +48,14 @@ function TicketConfirmationContent() {
   const [bookingReference, setBookingReference] = useState<string | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [contactEmail, setContactEmail] = useState<string | null>(null)
+  const [booking, setBooking] = useState<any | null>(null)
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
 
   useEffect(() => {
+    if (!hydrated) return
+
     // Check if we're coming from Stripe
     const sessionId = searchParams.get('session_id');
     const paymentStatus = searchParams.get('payment_status');
@@ -56,59 +64,36 @@ function TicketConfirmationContent() {
       console.log('Payment successful via Stripe, session:', sessionId);
       setPaymentProcessing(true);
       // Start polling for payment completion
-      pollPaymentStatus();
+      pollPaymentStatus(sessionId);
+      return
     }
 
-    // Get booking information from session storage (works for both flows)
-    const storedBookingId = sessionStorage.getItem("bookingId");
-    const storedBookingReference = sessionStorage.getItem("bookingReference");
-    const storedContactEmail = sessionStorage.getItem("contactEmail");
-
-    if (storedBookingId) {
-      setBookingId(storedBookingId);
-      setBookingReference(storedBookingReference);
-      setContactEmail(storedContactEmail);
-      
-      // If not coming from Stripe, fetch tickets immediately
-      if (!sessionId) {
-        fetchTicketDetails();
-      }
-    } else {
-      setError("No booking information found. Please check your booking reference.");
-      setLoading(false);
-    }
-  }, [searchParams]);
+    // Not coming from Stripe: load the booking of the current session
+    fetchTicketDetails(sessionId);
+  }, [searchParams, hydrated]);
 
   // Function to poll payment status when coming from Stripe
-  const pollPaymentStatus = async () => {
+  const pollPaymentStatus = async (sessionId: string) => {
     const maxAttempts = 30; // Poll for up to 30 seconds
     let attempts = 0;
     
     const checkPaymentStatus = async () => {
       try {
-        const storedPaymentId = sessionStorage.getItem("paymentId");
-        if (!storedPaymentId) {
-          console.log("No payment ID found, fetching tickets anyway");
-          fetchTicketDetails();
-          return;
-        }
+        const paymentData = await api.get<{ paymentstatus: string | null }>(
+          `/api/payments/status?session_id=${encodeURIComponent(sessionId)}`,
+        );
 
-        const { data: paymentData, error } = await supabaseClient
-          .from("payments")
-          .select("paymentstatus")
-          .eq("paymentid", storedPaymentId)
-          .single();
-
-        if (error) {
-          console.error("Error checking payment status:", error);
-          fetchTicketDetails(); // Fallback to fetching tickets
+        if (!paymentData.paymentstatus) {
+          console.log("No payment found, fetching tickets anyway");
+          setPaymentProcessing(false);
+          fetchTicketDetails(sessionId);
           return;
         }
 
         if (paymentData.paymentstatus === "Completed") {
           console.log("✅ Payment confirmed as completed, fetching tickets");
           setPaymentProcessing(false);
-          fetchTicketDetails();
+          fetchTicketDetails(sessionId);
           return;
         }
 
@@ -119,139 +104,39 @@ function TicketConfirmationContent() {
         } else {
           console.log("Payment status polling timeout, fetching tickets anyway");
           setPaymentProcessing(false);
-          fetchTicketDetails();
+          fetchTicketDetails(sessionId);
         }
       } catch (err) {
         console.error("Error in payment status polling:", err);
         setPaymentProcessing(false);
-        fetchTicketDetails(); // Fallback
+        fetchTicketDetails(sessionId); // Fallback
       }
     };
 
     checkPaymentStatus();
   };
 
-  const fetchTicketDetails = async () => {
+  // Loads the booking with its tickets from the server. After the Stripe redirect the booking
+  // is found through the checkout session, otherwise through the booking in progress.
+  const fetchTicketDetails = async (sessionId: string | null) => {
     try {
       setLoading(true)
 
-      // Get booking ID from session storage
-      const storedBookingId = sessionStorage.getItem("bookingId")
-      const storedBookingReference = sessionStorage.getItem("bookingReference")
-      const contactDetails = sessionStorage.getItem("contactInformation") || null
+      const details = await api.get<{ booking: any; tickets: Ticket[]; contactEmail: string | null }>(
+        `/api/bookings/current${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`,
+      )
 
-      if (!storedBookingId) {
-        throw new Error("Booking ID not found")
-      }
+      setBooking(details.booking)
+      setBookingId(String(details.booking.bookingid))
+      setBookingReference(details.booking.bookingreference)
+      setContactEmail(store.getState().contact?.contactEmail || details.contactEmail || null)
 
-      setBookingId(storedBookingId)
-      setBookingReference(storedBookingReference)
-      setContactEmail(JSON.parse(contactDetails || "null")?.contactEmail || null)
+      console.log("Tickets data:", details.tickets)
+      setTickets(details.tickets)
 
-      console.log("Fetching tickets for booking ID:", storedBookingId)
-
-      // Fetch tickets with related data using correct table joins
-      const { data: ticketsData, error: ticketsError } = await supabaseClient
-        .from("tickets")
-        .select(`
-          *,
-          flights(
-            flightid, 
-            flightnumber, 
-            departureairportcode, 
-            arrivalairportcode, 
-            departuredatetime, 
-            arrivaldatetime, 
-            status,
-            travelmiles
-          ),
-          passengers(
-            passengerid, 
-            bookingid,
-            customerid,
-            passengertype,
-            customers(
-              customerid,
-              firstname, 
-              lastname, 
-              passportnumber, 
-              identitycardnumber,
-              gender,
-              nationality,
-              dateofbirth
-            )
-          ),
-          seats(
-            seatid, 
-            seatnumber, 
-            classid, 
-            seattype
-          )
-        `)
-        .eq("bookingid", storedBookingId)
-
-      if (ticketsError) {
-        console.error("Error fetching tickets:", ticketsError)
-        throw new Error(`Error fetching tickets: ${ticketsError.message}`)
-      }
-
-      console.log("Tickets data:", ticketsData)
-
-      if (!ticketsData || ticketsData.length === 0) {
-        console.warn("No tickets found for booking ID:", storedBookingId)
-
-        // Try to create tickets if none exist
-        const success = await createTicketsForBooking(storedBookingId)
-        if (success) {
-          // Fetch tickets again after creation with the same detailed query
-          const { data: newTicketsData, error: newTicketsError } = await supabaseClient
-            .from("tickets")
-            .select(`
-              *,
-              flights(
-                flightid, 
-                flightnumber, 
-                departureairportcode, 
-                arrivalairportcode, 
-                departuredatetime, 
-                arrivaldatetime, 
-                status,
-                travelmiles
-              ),
-              passengers(
-                passengerid, 
-                bookingid,
-                customerid,
-                passengertype,
-                customers(
-                  customerid,
-                  firstname, 
-                  lastname, 
-                  passportnumber, 
-                  identitycardnumber,
-                  gender,
-                  nationality,
-                  dateofbirth
-                )
-              ),
-              seats(
-                seatid, 
-                seatnumber, 
-                classid, 
-                seattype
-              )
-            `)
-            .eq("bookingid", storedBookingId)
-
-          if (newTicketsError) {
-            console.error("Error fetching new tickets:", newTicketsError)
-          } else if (newTicketsData && newTicketsData.length > 0) {
-            console.log("Successfully created and fetched tickets:", newTicketsData)
-            setTickets(newTicketsData)
-          }
-        }
-      } else {
-        setTickets(ticketsData)
+      // The booking is complete: forget the in-progress booking
+      if (details.booking.bookingstatus === "Confirmed") {
+        dispatch(discardBooking())
       }
     } catch (err: any) {
       console.error("Error fetching ticket details:", err)
@@ -270,18 +155,9 @@ function TicketConfirmationContent() {
     try {
       setLoading(true)
 
-      // Get booking details
-      const { data: bookingData, error: bookingError } = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .eq("bookingid", bookingId)
-        .single()
-
-      if (bookingError) throw bookingError
-
       const response = await axios.post("/api/send-ticket-confirmation", {
         email: contactEmail,
-        booking: bookingData,
+        booking: booking,
         tickets: tickets,
       });
 
@@ -292,110 +168,6 @@ function TicketConfirmationContent() {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Add a new function to create tickets if they don't exist
-  const createTicketsForBooking = async (bookingId: string): Promise<boolean> => {
-    try {
-      console.log("Attempting to create tickets for booking:", bookingId)
-
-      // Get passenger records for this booking
-      const { data: passengerData, error: passengerError } = await supabaseClient
-        .from("passengers")
-        .select("*, customers(*)")
-        .eq("bookingid", bookingId)
-
-      if (passengerError || !passengerData || passengerData.length === 0) {
-        console.error("No passengers found for booking:", bookingId)
-        return false
-      }
-
-      // Get flight information from session storage
-      const departureFlight = JSON.parse(sessionStorage.getItem("selectedDepartureFlight") || "null")
-      const returnFlight = JSON.parse(sessionStorage.getItem("selectedReturnFlight") || "null")
-
-      // Get all departure and return seats
-      const allDepartureSeats = JSON.parse(sessionStorage.getItem("allDepartureSeats") || "null") || []
-      const allReturnSeats = JSON.parse(sessionStorage.getItem("allReturnSeats") || "null") || []
-
-      // Fallback to single seats if multiple seats aren't available
-      const departureSeat =
-        allDepartureSeats.length > 0
-          ? allDepartureSeats[0]
-          : JSON.parse(sessionStorage.getItem("selectedDepartureSeat") || "null")
-      const returnSeat =
-        allReturnSeats.length > 0
-          ? allReturnSeats[0]
-          : JSON.parse(sessionStorage.getItem("selectedReturnSeat") || "null")
-
-      if (!departureFlight) {
-        console.error("Missing flight information")
-        return false
-      }
-
-      // Create tickets for each passenger
-      for (let i = 0; i < passengerData.length; i++) {
-        const passenger = passengerData[i]
-
-        // Get the appropriate seat for this passenger or use the first seat as fallback
-        const passengerDepartureSeat = allDepartureSeats.length > i ? allDepartureSeats[i] : departureSeat
-        const passengerReturnSeat = allReturnSeats.length > i ? allReturnSeats[i] : returnSeat
-
-        if (!passengerDepartureSeat) {
-          console.error(`Missing departure seat for passenger ${i + 1}`)
-          continue
-        }
-
-        // Create departure ticket with unique ticket number
-        const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
-          bookingid: bookingId,
-          flightid: departureFlight.flightId,
-          passengerid: passenger.passengerid,
-          seatid: passengerDepartureSeat.seatid,
-          status: "Confirmed",
-          ticketprice: departureFlight.price || 0,
-          classid: passengerDepartureSeat.classid || 1,
-          ticketnumber: generateTicketNumber(),
-        })
-
-        if (departureTicketError) {
-          console.error("Error creating departure ticket:", departureTicketError)
-          continue
-        }
-
-        // Create return ticket if applicable
-        if (returnFlight && passengerReturnSeat) {
-          const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
-            bookingid: bookingId,
-            flightid: returnFlight.flightId,
-            passengerid: passenger.passengerid,
-            seatid: passengerReturnSeat.seatid,
-            status: "Confirmed",
-            ticketprice: returnFlight.price || 0,
-            classid: passengerReturnSeat.classid || 1,
-            ticketnumber: generateTicketNumber(),
-          })
-
-          if (returnTicketError) {
-            console.error("Error creating return ticket:", returnTicketError)
-          }
-        }
-      }
-
-      return true
-    } catch (err) {
-      console.error("Error creating tickets:", err)
-      return false
-    }
-  }
-
-  // Add the generateTicketNumber function
-  const generateTicketNumber = () => {
-    const prefix = "CA"
-    const randomDigits = Math.floor(Math.random() * 10000000)
-      .toString()
-      .padStart(7, "0")
-    return `${prefix}${randomDigits}`
   }
 
   const handleReturnHome = () => {

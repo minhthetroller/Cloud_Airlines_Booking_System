@@ -1,22 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createPaymentIntent } from "@/app/actions/stripe";
+import { headers } from "next/headers"
+import { getDraftId, loadDraft } from "@/lib/redis/booking-draft"
+import { HttpError, route } from "@/lib/server/http"
+import { startCheckout } from "@/lib/server/payments"
 
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    
-    // Use the action function which now creates a checkout session for card-only payments
-    const result = await createPaymentIntent(formData);
+// Creates a Stripe Checkout session for the booking of the current draft.
+// The amount comes from the booking row, never from the client.
+export const POST = route(async () => {
+  const draftId = await getDraftId()
+  const bookingId = draftId ? (await loadDraft(draftId))?.booking.bookingId : null
+  if (!draftId || !bookingId) throw new HttpError(400, "Booking ID is missing. Please go back and try again.")
 
-    return NextResponse.json({
-      client_secret: result.client_secret,
-      url: result.url,
-    });
-  } catch (error: any) {
-    console.error("Error creating checkout session:", error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
-  }
-}
+  const origin = (await headers()).get("origin") || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  return startCheckout(draftId, bookingId, origin.replace(/\/$/, ""))
+})

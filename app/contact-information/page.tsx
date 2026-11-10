@@ -10,7 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertCircle, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setContactInformation } from "@/lib/store/slices/bookingSlices"
 
 interface ContactInformation {
   contactName: string
@@ -24,6 +25,9 @@ interface ContactInformation {
 
 export default function ContactInformationPage() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
   const [contactInfo, setContactInfo] = useState<ContactInformation>({
     contactName: "",
     contactEmail: "",
@@ -39,19 +43,14 @@ export default function ContactInformationPage() {
   const [primaryPassenger, setPrimaryPassenger] = useState<any>(null)
 
   useEffect(() => {
-    // Load primary passenger information from session storage
-    const storedPassengers = sessionStorage.getItem("passengers")
-    if (storedPassengers) {
-      try {
-        const parsedPassengers = JSON.parse(storedPassengers)
-        if (Array.isArray(parsedPassengers) && parsedPassengers.length > 0) {
-          setPrimaryPassenger(parsedPassengers[0])
-        }
-      } catch (e) {
-        console.error("Error parsing passengers from session storage:", e)
-      }
+    if (!hydrated) return
+
+    // Load primary passenger information from the store
+    const storedPassengers = store.getState().passengers
+    if (Array.isArray(storedPassengers) && storedPassengers.length > 0) {
+      setPrimaryPassenger(storedPassengers[0])
     }
-  }, [])
+  }, [hydrated, store])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -117,38 +116,14 @@ export default function ContactInformationPage() {
     setGeneralError(null)
 
     try {
-      // Store contact information in session storage
-      sessionStorage.setItem("contactInformation", JSON.stringify(contactInfo))
-
-      // Get customer IDs from session storage
-      const customerIdsStr = sessionStorage.getItem("customerIds")
-      if (!customerIdsStr) {
-        throw new Error("Customer IDs not found")
+      // Passenger details from the previous step are required
+      if (store.getState().passengers.length === 0) {
+        throw new Error("Passenger information not found")
       }
 
-      const customerIds = JSON.parse(customerIdsStr)
-      if (!Array.isArray(customerIds) || customerIds.length === 0) {
-        throw new Error("Invalid customer IDs")
-      }
-
-      // Update primary customer record with contact information
-      const primaryCustomerId = customerIds[0]
-
-      const { error: updateError } = await supabaseClient
-        .from("customers")
-        .update({
-          contactname: contactInfo.contactName,
-          contactemail: contactInfo.contactEmail,
-          contactphone: contactInfo.contactPhone,
-          addressline: contactInfo.address,
-          city: contactInfo.city,
-          country: contactInfo.country,
-        })
-        .eq("customerid", primaryCustomerId)
-
-      if (updateError) {
-        throw new Error(updateError.message)
-      }
+      // Keep contact information in the store. It is saved on the primary customer
+      // together with the rest of the booking.
+      dispatch(setContactInformation(contactInfo))
 
       // Redirect to ticket confirmation page before payment process
       router.push("/confirmation")

@@ -1,5 +1,6 @@
 "use client"
 
+import { api } from "@/lib/api/client"
 import type React from "react"
 
 import { useState, useEffect, Suspense } from "react"
@@ -10,8 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, AlertCircle, CheckCircle } from "lucide-react"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase/supabaseClient"
-import { sha256 } from "js-sha256"
 
 function ResetPasswordContent() {
   const [password, setPassword] = useState("")
@@ -42,12 +41,10 @@ function ResetPasswordContent() {
     // Verify token
     const verifyToken = async () => {
       try {
-        const { data, error } = await supabaseClient
-          .from("users")
-          .select("userid, reset_token, reset_expires")
-          .eq("reset_token", token)
-          .gte("reset_expires", new Date().toISOString())
-          .single()
+        const { valid: data } = await api.get<{ valid: boolean }>(
+          `/api/reset-password?token=${encodeURIComponent(token)}`,
+        )
+        const error = null
 
         if (error || !data) {
           setError("Invalid or expired reset link")
@@ -125,34 +122,8 @@ function ResetPasswordContent() {
     setError(null)
 
     try {
-      // Get user by token
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("userid")
-        .eq("reset_token", token)
-        .gte("reset_expires", new Date().toISOString())
-        .single()
-
-      if (userError || !userData) {
-        throw new Error("Invalid or expired reset link")
-      }
-
-      // Hash the new password
-      const hashedPassword = sha256(password)
-
-      // Update user password and clear reset token
-      const { error: updateError } = await supabaseClient
-        .from("users")
-        .update({
-          passwordhash: hashedPassword,
-          reset_token: null,
-          reset_expires: null,
-        })
-        .eq("userid", userData.userid)
-
-      if (updateError) {
-        throw new Error("Failed to update password")
-      }
+      // The server checks the reset token, hashes the new password and clears the token
+      await api.post("/api/reset-password", { token, password })
 
       setSuccess(true)
 

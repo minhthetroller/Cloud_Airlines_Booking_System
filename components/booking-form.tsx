@@ -14,6 +14,9 @@ import AirportSelector from "@/components/airport-selector"
 import PassengerModal from "@/components/passenger-modal"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
+import { useAppDispatch } from "@/lib/store/hooks"
+import { discardBooking } from "@/lib/store/session"
+import { setPassengerDetails as storePassengerDetails } from "@/lib/store/slices/bookingSlices"
 
 export default function BookingForm() {
   const [tripType, setTripType] = useState("round-trip")
@@ -32,6 +35,7 @@ export default function BookingForm() {
   const [error, setError] = useState<string | null>(null)
 
   const router = useRouter()
+  const dispatch = useAppDispatch()
 
   const getTotalPassengers = () => {
     return passengerDetails.adults + passengerDetails.children + passengerDetails.infants
@@ -65,9 +69,10 @@ export default function BookingForm() {
       const departDateStrUrl = departDate ? format(departDate, "yyyy-MM-dd") : ""
       const returnDateStr = returnDate ? format(returnDate, "yyyy-MM-dd") : ""
 
-      // Store passenger details in session storage for use throughout the booking process
-      sessionStorage.setItem("passengerDetails", JSON.stringify(passengerDetails))
-      sessionStorage.setItem("totalPassengers", getTotalPassengers().toString())
+      // A new search starts a new booking: drop the previous one and its seat holds,
+      // then keep the passenger details for use throughout the booking process
+      await dispatch(discardBooking())
+      dispatch(storePassengerDetails(passengerDetails))
 
       // Navigate to results page with query parameters
       router.push(

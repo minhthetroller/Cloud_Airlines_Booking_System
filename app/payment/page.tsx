@@ -8,12 +8,17 @@ import { Button } from "@/components/ui/button"
 import { AlertCircle, CreditCard, Building, ArrowLeft, Clock, Award } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setBookingProgress } from "@/lib/store/slices/bookingSlices"
 import { formatVNDForDisplay } from "@/utils/stripe-helpers"
 import axios from "axios"
 
 export default function PaymentPage() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,29 +37,32 @@ export default function PaymentPage() {
   const [bankQrShown, setBankQrShown] = useState(false)
 
   useEffect(() => {
-    // Get booking ID and reference from session storage
-    const storedBookingId = sessionStorage.getItem("bookingId")
-    const storedBookingReference = sessionStorage.getItem("bookingReference")
-    const storedTotalPrice = sessionStorage.getItem("totalPrice")
-    const storedPaymentId = sessionStorage.getItem("paymentId")
-    const storedContactEmail = sessionStorage.getItem("contactEmail")
-    const storedIsLoggedIn = sessionStorage.getItem("isLoggedIn")
-    const storedUserId = sessionStorage.getItem("userId")
+    if (!hydrated) return
 
-    if (storedBookingId) setBookingId(storedBookingId)
+    // Get booking ID, reference and price from the store
+    const state = store.getState()
+    const storedBookingId = state.booking.bookingId
+    const storedBookingReference = state.booking.bookingReference
+    const storedTotalPrice = state.booking.totalPrice
+    const storedPaymentId = state.booking.paymentId
+    const storedContactEmail = state.contact?.contactEmail || state.passengers[0]?.email || null
+
+    if (storedBookingId) setBookingId(String(storedBookingId))
     if (storedBookingReference) setBookingReference(storedBookingReference)
     if (storedTotalPrice) {
-      const price = Number.parseFloat(storedTotalPrice)
+      const price = storedTotalPrice
       setTotalPrice(price)
 
       // Calculate points (500,000 VND = 1 point)
       const points = Math.floor(price / 500000)
       setPointsToAdd(points)
     }
-    if (storedPaymentId) setPaymentId(storedPaymentId)
+    if (storedPaymentId) setPaymentId(String(storedPaymentId))
     if (storedContactEmail) setContactEmail(storedContactEmail)
-    if (storedIsLoggedIn === "true") setIsLoggedIn(true)
-    if (storedUserId) setUserId(storedUserId)
+    if (state.auth.user) {
+      setIsLoggedIn(true)
+      setUserId(String(state.auth.user.userId))
+    }
 
     // Check for payment status from URL (when returning from Stripe)
     const urlParams = new URLSearchParams(window.location.search)
@@ -64,34 +72,20 @@ export default function PaymentPage() {
       setError("Payment was cancelled. You can try again.")
       setLoading(false)
       
-      // Update payment status to cancelled if we have a payment ID
-      const currentPaymentId = paymentId || sessionStorage.getItem("paymentId")
-      if (currentPaymentId) {
-        const updatePaymentStatus = async () => {
-          try {
-            await supabaseClient
-              .from("payments")
-              .update({
-                paymentstatus: "Cancelled",
-              })
-              .eq("paymentid", currentPaymentId)
-            
-            console.log(`Payment ${currentPaymentId} marked as cancelled`)
-          } catch (err) {
-            console.error("Error updating payment status:", err)
-          }
-        }
-        
-        updatePaymentStatus()
+      // Mark the abandoned checkout attempt as cancelled. The booking stays open for a retry.
+      if (storedPaymentId) {
+        api
+          .post("/api/payments/close", { status: "Cancelled" })
+          .catch((err) => console.error("Error updating payment status:", err))
       }
     }
 
     // Check if we have the required booking information
     if (!storedBookingId) {
-      console.error("No booking ID found in session storage")
+      console.error("No booking ID found in the store")
 
       // Check if we need to redirect back to confirmation page
-      const hasFlightData = sessionStorage.getItem("selectedDepartureFlight")
+      const hasFlightData = state.flights.departure
 
       if (hasFlightData) {
         // We have flight data but no booking ID, redirect to confirmation page
@@ -124,26 +118,16 @@ export default function PaymentPage() {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [])
+  }, [hydrated, store])
 
   const handlePaymentExpiration = async () => {
     setError("Payment session has expired. Please try booking again.")
 
-    // Update payment record to expired if it exists
-    const currentPaymentId = paymentId || sessionStorage.getItem("paymentId")
-    if (currentPaymentId) {
-      try {
-        await supabaseClient
-          .from("payments")
-          .update({
-            paymentstatus: "Expired",
-          })
-          .eq("paymentid", currentPaymentId)
-        
-        console.log(`Payment ${currentPaymentId} marked as expired`)
-      } catch (err) {
-        console.error("Error updating payment status:", err)
-      }
+    // The payment window is over: the booking expires on the server and its seats are released
+    try {
+      await api.post("/api/payments/close", { status: "Expired" })
+    } catch (err) {
+      console.error("Error updating payment status:", err)
     }
   }
 
@@ -179,45 +163,15 @@ export default function PaymentPage() {
         throw new Error("Invalid payment amount. Please go back and try again.");
       }
 
-      // First, create payment record in database
-      const now = new Date();
-      const { data: paymentData, error: paymentError } = await supabaseClient
-        .from("payments")
-        .insert({
-          bookingid: parseInt(bookingId), // Ensure it's an integer
-          paymentdatetime: now.toISOString(),
-          amount: totalPrice,
-          currencycode: "VND",
-          paymentmethod: "Credit Card",
-          paymentstatus: "Pending",
-        })
-        .select()
-        .single();
-
-      if (paymentError) {
-        console.error("Error creating payment record:", paymentError);
-        throw new Error("Failed to create payment record. Please try again.");
+      // Create the payment record and the Stripe checkout session on the server.
+      // The amount is taken from the booking, not from this page.
+      const response = {
+        data: await api.post<{ url: string | null; paymentId: number; error?: string }>("/api/create-payment-intent"),
       }
 
-      console.log("Payment record created:", paymentData);
-      const createdPaymentId = paymentData.paymentid;
-      
-      // Store payment ID for later use
-      setPaymentId(createdPaymentId);
-      sessionStorage.setItem("paymentId", createdPaymentId.toString());
-
-      // Create checkout session and redirect to Stripe hosted checkout
-      const formData = new FormData();
-      formData.append("amount", totalPrice.toString());
-      formData.append("bookingId", bookingId);
-      formData.append("paymentId", createdPaymentId.toString());
-      formData.append("uiMode", "hosted"); // Use hosted checkout
-
-      const response = await axios.post("/api/create-payment-intent", formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      // Keep payment ID for later use
+      setPaymentId(String(response.data.paymentId))
+      dispatch(setBookingProgress({ paymentId: response.data.paymentId }))
 
       if (response.data.error) {
         throw new Error(response.data.error);

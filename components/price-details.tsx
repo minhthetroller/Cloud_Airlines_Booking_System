@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface TicketClass {
@@ -49,38 +49,14 @@ export default function PriceDetails({
   const [ticketClassDetails, setTicketClassDetails] = useState<Record<number, TicketClass>>({})
   const [flightDetails, setFlightDetails] = useState<{ travelmiles: number } | null>(null)
 
-  // Fetch flight details to get travel miles
-  useEffect(() => {
-    const fetchFlightDetails = async () => {
-      try {
-        const { data, error } = await supabaseClient
-          .from("flights")
-          .select("travelmiles")
-          .eq("flightid", flightId)
-          .single()
-
-        if (error) throw error
-        setFlightDetails(data)
-      } catch (err) {
-        console.error("Error fetching flight details:", err)
-        // Set default travel miles if not available
-        setFlightDetails({ travelmiles: 1200 })
-      }
-    }
-
-    fetchFlightDetails()
-  }, [flightId])
-
   // Fetch ticket class details
   useEffect(() => {
     const fetchTicketClasses = async () => {
       try {
-        const { data, error } = await supabaseClient.from("ticketclasses").select("*")
-
-        if (error) throw error
+        const { ticketClasses } = await api.get<{ ticketClasses: TicketClass[] }>("/api/ticket-classes")
 
         const classDetails: Record<number, TicketClass> = {}
-        data.forEach((ticketClass: TicketClass) => {
+        ticketClasses.forEach((ticketClass: TicketClass) => {
           classDetails[ticketClass.classid] = ticketClass
         })
 
@@ -128,97 +104,18 @@ export default function PriceDetails({
           classIds = [4, 5]
         }
 
-        // Fetch prices for this flight and selected classes
-        const { data: priceData, error: priceError } = await supabaseClient
-          .from("flightprices")
-          .select("price, classid, currencycode")
-          .eq("flightid", flightId)
-          .in("classid", classIds)
+        // Prices, free seats per class and mileage for this flight in one request
+        const fareData = await api.get<{
+          travelmiles: number | null
+          fares: Array<{ classid: number; price: number; currencycode: string; availability: number }>
+        }>(`/api/flights/${flightId}/fares?classIds=${classIds.join(",")}`)
 
-        if (priceError) throw new Error(priceError.message)
+        setFlightDetails({ travelmiles: fareData.travelmiles || 1200 })
 
-        // Get flight details to get the airplane ID
-        const { data: flightData, error: flightError } = await supabaseClient
-          .from("flights")
-          .select("airplaneid")
-          .eq("flightid", flightId)
-          .single()
-
-        if (flightError) throw new Error(flightError.message)
-
-        // Get airplane type ID from the airplane
-        const { data: airplaneData, error: airplaneError } = await supabaseClient
-          .from("airplanes")
-          .select("airplanetypeid")
-          .eq("airplaneid", flightData.airplaneid)
-          .single()
-
-        if (airplaneError) throw new Error(airplaneError.message)
-
-        const airplaneTypeId = airplaneData.airplanetypeid
-
-        // Get all seats for this airplane type
-        const { data: seatsData, error: seatsError } = await supabaseClient
-          .from("seats")
-          .select("seatid, classid")
-          .eq("airplanetypeid", airplaneTypeId)
-          .in("classid", classIds)
-
-        if (seatsError) throw new Error(seatsError.message)
-
-        // Count total seats by class
-        const totalSeatsByClass: Record<number, number> = {}
-        seatsData.forEach((seat) => {
-          if (!totalSeatsByClass[seat.classid]) {
-            totalSeatsByClass[seat.classid] = 0
-          }
-          totalSeatsByClass[seat.classid]++
-        })
-
-        // Get occupied seats for this flight
-        const { data: occupiedSeatsData, error: occupiedSeatsError } = await supabaseClient
-          .from("flightseatoccupancy")
-          .select("seatid")
-          .eq("flightid", flightId)
-          .eq("isoccupied", true)
-
-        if (occupiedSeatsError) throw new Error(occupiedSeatsError.message)
-
-        // If there are occupied seats, get their class IDs
-        const occupiedSeatsByClass: Record<number, number> = {}
-        classIds.forEach((classId) => {
-          occupiedSeatsByClass[classId] = 0
-        })
-
-        if (occupiedSeatsData && occupiedSeatsData.length > 0) {
-          // Get all seat IDs from occupied seats
-          const occupiedSeatIds = occupiedSeatsData.map((seat) => seat.seatid)
-
-          // Get class information for these seats
-          const { data: seatClassData, error: seatClassError } = await supabaseClient
-            .from("seats")
-            .select("seatid, classid")
-            .in("seatid", occupiedSeatIds)
-            .in("classid", classIds)
-
-          if (seatClassError) throw new Error(seatClassError.message)
-
-          // Count occupied seats by class
-          seatClassData?.forEach((seat) => {
-            if (!occupiedSeatsByClass[seat.classid]) {
-              occupiedSeatsByClass[seat.classid] = 0
-            }
-            occupiedSeatsByClass[seat.classid]++
-          })
-        }
-
-        // Calculate available seats by class
+        const priceData = fareData.fares
         const availableSeatsByClass: Record<number, number> = {}
-        classIds.forEach((classId) => {
-          availableSeatsByClass[classId] = Math.max(
-            0,
-            (totalSeatsByClass[classId] || 0) - (occupiedSeatsByClass[classId] || 0),
-          )
+        priceData.forEach((item) => {
+          availableSeatsByClass[item.classid] = item.availability
         })
 
         // Create a map of the fetched prices by class ID
