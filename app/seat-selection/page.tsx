@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { refreshSession } from "@/lib/store/session"
+import { clearSeats, setFlight, setPassengerDetails, setSeats as storeSeats } from "@/lib/store/slices/bookingSlices"
 import SeatMap from "@/components/seat-map"
 import LoginOrGuestDialog from "@/components/login-or-guest-dialog"
 
@@ -49,6 +52,9 @@ interface CustomerInfo {
 
 export default function SeatSelectionPage() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
   const [selectedDepartureFlight, setSelectedDepartureFlight] = useState<SelectedFlightDetails | null>(null)
   const [selectedReturnFlight, setSelectedReturnFlight] = useState<SelectedFlightDetails | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -72,22 +78,22 @@ export default function SeatSelectionPage() {
   const [departureSelectedSeats, setDepartureSelectedSeats] = useState<PassengerSeat[]>([])
   const [returnSelectedSeats, setReturnSelectedSeats] = useState<PassengerSeat[]>([])
 
-  // Load flight details from session storage
+  // Load flight details from the store
   useEffect(() => {
-    const departureFlight = sessionStorage.getItem("selectedDepartureFlight")
-    const returnFlight = sessionStorage.getItem("selectedReturnFlight")
+    if (!hydrated) return
 
-    if (!departureFlight) {
+    const { departure: parsedDepartureFlight, return: returnFlight } = store.getState().flights
+
+    if (!parsedDepartureFlight) {
       router.push("/results")
       return
     }
 
-    const parsedDepartureFlight = JSON.parse(departureFlight)
     setSelectedDepartureFlight(parsedDepartureFlight)
     setFareType(parsedDepartureFlight.fareType)
 
     if (returnFlight) {
-      setSelectedReturnFlight(JSON.parse(returnFlight))
+      setSelectedReturnFlight(returnFlight)
       setIsRoundTrip(true)
     }
 
@@ -101,24 +107,25 @@ export default function SeatSelectionPage() {
     else if (initialFareType === "Premium Economy") setUserClassId(3)
     else if (initialFareType === "Business") setUserClassId(4)
     else if (initialFareType === "First Class") setUserClassId(5)
-  }, [router])
+  }, [router, hydrated, store])
 
   useEffect(() => {
-    // Get passenger count from session storage or URL parameters
+    if (!hydrated) return
+
+    // Get passenger count from the store or URL parameters
     const searchParams = new URLSearchParams(window.location.search)
     const adults = Number.parseInt(searchParams.get("adults") || "1")
     const children = Number.parseInt(searchParams.get("children") || "0")
     const infants = Number.parseInt(searchParams.get("infants") || "0")
 
-    // Also try to get from session storage if URL params are not available
-    const storedPassengerDetails = sessionStorage.getItem("passengerDetails")
+    // Also try to get from the store if URL params are not available
+    const details = store.getState().search
     if (
-      storedPassengerDetails &&
+      details &&
       !searchParams.get("adults") &&
       !searchParams.get("children") &&
       !searchParams.get("infants")
     ) {
-      const details = JSON.parse(storedPassengerDetails)
       setPassengerTypes({
         adults: details.adults || 1,
         children: details.children || 0,
@@ -138,10 +145,7 @@ export default function SeatSelectionPage() {
     // Initialize selected seats arrays
     setDepartureSelectedSeats([])
     setReturnSelectedSeats([])
-
-    // Store passenger counts in session storage
-    sessionStorage.setItem("passengerCounts", JSON.stringify({ adults, children, infants }))
-  }, [])
+  }, [hydrated, store])
 
   // Fetch airplane type and seats when flight details are loaded
   useEffect(() => {
@@ -156,44 +160,12 @@ export default function SeatSelectionPage() {
         const activeFlight = activeFlightType === "departure" ? selectedDepartureFlight : selectedReturnFlight
         if (!activeFlight) return
 
-        // Always use a default airplane type ID since it's not available in the flight details
-        const airplaneTypeId = 1 // Default airplane type ID
-
-        // Fetch airplane type
-        const { data: airplaneData, error: airplaneError } = await supabaseClient
-          .from("airplanetypes")
-          .select("*")
-          .eq("airplanetypeid", airplaneTypeId)
-          .single()
-
-        if (airplaneError) throw new Error(airplaneError.message)
+        // Seat layout of the flight's aircraft. Seats that are sold or temporarily held
+        // by anyone (including this booking) come back as occupied.
+        const { airplaneType: airplaneData, seats: processedSeats } = await api.get<{ airplaneType: any; seats: Seat[] }>(
+          `/api/flights/${activeFlight.flightId}/seats`,
+        )
         setAirplaneType(airplaneData)
-
-        // Fetch seats for this airplane type
-        const { data: seatsData, error: seatsError } = await supabaseClient
-          .from("seats")
-          .select("*")
-          .eq("airplanetypeid", airplaneTypeId)
-
-        if (seatsError) throw new Error(seatsError.message)
-
-        // Fetch occupied seats from flightseatoccupancy table
-        const { data: occupiedSeatsData, error: occupiedSeatsError } = await supabaseClient
-          .from("flightseatoccupancy")
-          .select("seatid")
-          .eq("flightid", activeFlight.flightId)
-          .eq("isoccupied", true)
-
-        if (occupiedSeatsError) throw new Error(occupiedSeatsError.message)
-
-        // Create a set of occupied seat IDs
-        const occupiedSeatIds = new Set(occupiedSeatsData?.map((item: any) => item.seatid) || [])
-
-        // Process seats data
-        const processedSeats = seatsData.map((seat: Seat) => ({
-          ...seat,
-          isoccupied: occupiedSeatIds.has(seat.seatid),
-        }))
 
         setSeats(processedSeats)
 
@@ -207,9 +179,7 @@ export default function SeatSelectionPage() {
         setOccupiedSeats(occupiedSeatNumbers)
 
         // Load previously selected seats
-        const storedSeats = JSON.parse(
-          sessionStorage.getItem(`selectedSeats_${activeFlightType}`) || "[]",
-        ) as PassengerSeat[]
+        const storedSeats = store.getState().seats[activeFlightType] as PassengerSeat[]
 
         if (activeFlightType === "departure") {
           setDepartureSelectedSeats(storedSeats)
@@ -264,16 +234,14 @@ export default function SeatSelectionPage() {
         throw new Error("Flight ID not found")
       }
 
-      // Mark the seat as occupied in the database
-      const { error: occupyError } = await supabaseClient.from("flightseatoccupancy").upsert({
-        flightid: flightId,
-        seatid: seat.seatid,
-        isoccupied: true,
+      // Temporarily lock the seat for this booking. If this passenger already had a seat,
+      // it is released in the same request once the new one is locked.
+      const replacedSeat = selectedSeats[currentPassengerIndex]
+      await api.post("/api/seats/hold", {
+        flightId,
+        seatIds: [seat.seatid],
+        releaseSeatIds: replacedSeat ? [replacedSeat.seatid] : [],
       })
-
-      if (occupyError) {
-        throw new Error(`Error reserving seat: ${occupyError.message}`)
-      }
 
       // Update the local state to mark the new seat as selected
       const updatedSeats = seats.map((s) => {
@@ -305,13 +273,6 @@ export default function SeatSelectionPage() {
       if (updatedSelectedSeats.length > currentPassengerIndex) {
         const oldSeat = updatedSelectedSeats[currentPassengerIndex]
         if (oldSeat) {
-          // Release the old seat in the database
-          await supabaseClient
-            .from("flightseatoccupancy")
-            .update({ isoccupied: false })
-            .eq("flightid", flightId)
-            .eq("seatid", oldSeat.seatid)
-
           // Update local state to mark the old seat as available
           const updatedSeatsAfterRelease = updatedSeats.map((s) => {
             if (s.seatid === oldSeat.seatid) {
@@ -347,19 +308,8 @@ export default function SeatSelectionPage() {
       // Update the selected seat for display
       setSelectedSeat(seat)
 
-      // Store the selected seats in session storage
-      sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
-
-      // Also store the first seat for backward compatibility
-      if (updatedSelectedSeats.length > 0) {
-        const firstSeatObj = seats.find((s) => s.seatid === updatedSelectedSeats[0].seatid)
-        if (firstSeatObj) {
-          sessionStorage.setItem(
-            `selected${activeFlightType.charAt(0).toUpperCase() + activeFlightType.slice(1)}Seat`,
-            JSON.stringify(firstSeatObj),
-          )
-        }
-      }
+      // Keep the selected seats in the store
+      dispatch(storeSeats({ leg: activeFlightType, seats: updatedSelectedSeats }))
 
       // Move to next passenger if not the last one
       if (currentPassengerIndex < totalPassengers - 1) {
@@ -367,6 +317,10 @@ export default function SeatSelectionPage() {
       }
     } catch (err: any) {
       console.error("Error reserving seat:", err)
+      // Someone else got the seat first: show it as occupied
+      if (err?.status === 409) {
+        setSeats((current) => current.map((s) => (s.seatid === seat.seatid ? { ...s, isoccupied: true } : s)))
+      }
       alert("Failed to reserve seat. Please try again.")
     }
   }
@@ -388,12 +342,8 @@ export default function SeatSelectionPage() {
       const seatToRemove = currentSelectedSeats[index]
       if (!seatToRemove) return
 
-      // Release the seat in the database
-      await supabaseClient
-        .from("flightseatoccupancy")
-        .update({ isoccupied: false })
-        .eq("flightid", flightId)
-        .eq("seatid", seatToRemove.seatid)
+      // Release the temporary lock on the seat
+      await api.delete("/api/seats/hold", { flightId, seatIds: [seatToRemove.seatid] })
 
       // Update local state to mark the seat as available
       const updatedSeats = seats.map((s) => {
@@ -442,8 +392,8 @@ export default function SeatSelectionPage() {
 
       setSelectedSeats(updatedSelectedSeats)
 
-      // Store the updated selected seats in session storage
-      sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
+      // Keep the updated selected seats in the store
+      dispatch(storeSeats({ leg: activeFlightType, seats: updatedSelectedSeats }))
 
       // Set current passenger index to the removed seat's index to allow selecting a new seat
       setCurrentPassengerIndex(index)
@@ -546,13 +496,13 @@ export default function SeatSelectionPage() {
       return false
     }
 
-    // Mark auto-assigned seats as occupied in the database
-    for (const seat of autoAssignedSeats) {
-      await supabaseClient.from("flightseatoccupancy").upsert({
-        flightid: flightId,
-        seatid: seat.seatid,
-        isoccupied: true,
-      })
+    // Lock all auto-assigned seats together (all or nothing)
+    try {
+      await api.post("/api/seats/hold", { flightId, seatIds: autoAssignedSeats.map((seat) => seat.seatid) })
+    } catch (err) {
+      console.error("Error reserving auto-assigned seats:", err)
+      setError("Not enough available seats to auto-assign. Please select seats manually.")
+      return false
     }
 
     // Update local state
@@ -596,10 +546,10 @@ export default function SeatSelectionPage() {
 
     setSelectedSeats(updatedSelectedSeats)
 
-    // Store the selected seats in session storage
-    sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
+    // Keep the selected seats in the store
+    dispatch(storeSeats({ leg: activeFlightType, seats: updatedSelectedSeats }))
 
-    return true
+    return updatedSelectedSeats
   }
 
   const handleUpgradeClass = (newClassId: number) => {
@@ -620,11 +570,11 @@ export default function SeatSelectionPage() {
     if (activeFlightType === "departure" && selectedDepartureFlight) {
       const updatedFlight = { ...selectedDepartureFlight, fareType: newFareType }
       setSelectedDepartureFlight(updatedFlight)
-      sessionStorage.setItem("selectedDepartureFlight", JSON.stringify(updatedFlight))
+      dispatch(setFlight({ leg: "departure", flight: updatedFlight }))
     } else if (activeFlightType === "return" && selectedReturnFlight) {
       const updatedFlight = { ...selectedReturnFlight, fareType: newFareType }
       setSelectedReturnFlight(updatedFlight)
-      sessionStorage.setItem("selectedReturnFlight", JSON.stringify(updatedFlight))
+      dispatch(setFlight({ leg: "return", flight: updatedFlight }))
     }
   }
 
@@ -646,24 +596,32 @@ export default function SeatSelectionPage() {
     if (activeFlightType === "departure" && selectedDepartureFlight) {
       const updatedFlight = { ...selectedDepartureFlight, fareType: newFareType }
       setSelectedDepartureFlight(updatedFlight)
-      sessionStorage.setItem("selectedDepartureFlight", JSON.stringify(updatedFlight))
+      dispatch(setFlight({ leg: "departure", flight: updatedFlight }))
     } else if (activeFlightType === "return" && selectedReturnFlight) {
       const updatedFlight = { ...selectedReturnFlight, fareType: newFareType }
       setSelectedReturnFlight(updatedFlight)
-      sessionStorage.setItem("selectedReturnFlight", JSON.stringify(updatedFlight))
+      dispatch(setFlight({ leg: "return", flight: updatedFlight }))
     }
   }
 
   const handleContinue = async () => {
     const currentSelectedSeats = activeFlightType === "departure" ? departureSelectedSeats : returnSelectedSeats
 
+    // Seats of the active flight including any that get auto-assigned below
+    // (the state setters have not re-rendered this handler yet)
+    let activeFlightSeats = currentSelectedSeats
+
     // Check if we need to auto-assign seats
     if (currentSelectedSeats.length < totalPassengers) {
-      const autoAssignSuccess = await autoAssignRemainingSeats()
-      if (!autoAssignSuccess) {
+      const autoAssignedResult = await autoAssignRemainingSeats()
+      if (!autoAssignedResult) {
         return // Don't continue if auto-assignment failed
       }
+      activeFlightSeats = autoAssignedResult
     }
+
+    const finalDepartureSeats = activeFlightType === "departure" ? activeFlightSeats : departureSelectedSeats
+    const finalReturnSeats = activeFlightType === "return" ? activeFlightSeats : returnSelectedSeats
 
     if (isRoundTrip && activeFlightType === "departure") {
       // Switch to return flight seat selection
@@ -673,108 +631,40 @@ export default function SeatSelectionPage() {
       return
     }
 
-    // Store selected seats in session storage
-    if (departureSelectedSeats.length > 0) {
-      sessionStorage.setItem(
-        "selectedDepartureSeat",
-        JSON.stringify(seats.find((s) => s.seatid === departureSelectedSeats[0].seatid) || null),
-      )
-      sessionStorage.setItem("selectedSeats_departure", JSON.stringify(departureSelectedSeats))
-
-      // Store all departure seats in a format that confirmation page can use
-      const allDepartureSeats = departureSelectedSeats.map((seat) => {
+    // Keep the final seats of each leg in the store, one per passenger. They stay locked in
+    // Redis until the booking is created; nothing is written to the database here.
+    if (finalDepartureSeats.length > 0) {
+      const allDepartureSeats = finalDepartureSeats.map((seat) => {
         const seatObj = seats.find((s) => s.seatid === seat.seatid)
         return seatObj || seat
       })
-      sessionStorage.setItem("allDepartureSeats", JSON.stringify(allDepartureSeats))
-
-      // Ensure all selected departure seats are marked as occupied in the database
-      for (const seat of departureSelectedSeats) {
-        if (selectedDepartureFlight) {
-          await supabaseClient.from("flightseatoccupancy").upsert(
-            {
-              flightid: selectedDepartureFlight.flightId,
-              seatid: seat.seatid,
-              isoccupied: true,
-            },
-            { onConflict: "flightid,seatid" },
-          )
-        }
-      }
+      dispatch(storeSeats({ leg: "departure", seats: allDepartureSeats }))
     }
 
-    if (returnSelectedSeats.length > 0) {
-      sessionStorage.setItem(
-        "selectedReturnSeat",
-        JSON.stringify(seats.find((s) => s.seatid === returnSelectedSeats[0].seatid) || null),
-      )
-      sessionStorage.setItem("selectedSeats_return", JSON.stringify(returnSelectedSeats))
-
-      // Store all return seats in a format that confirmation page can use
-      const allReturnSeats = returnSelectedSeats.map((seat) => {
+    if (finalReturnSeats.length > 0) {
+      const allReturnSeats = finalReturnSeats.map((seat) => {
         const seatObj = seats.find((s) => s.seatid === seat.seatid)
         return seatObj || seat
       })
-      sessionStorage.setItem("allReturnSeats", JSON.stringify(allReturnSeats))
-
-      // Ensure all selected return seats are marked as occupied in the database
-      for (const seat of returnSelectedSeats) {
-        if (selectedReturnFlight) {
-          await supabaseClient.from("flightseatoccupancy").upsert(
-            {
-              flightid: selectedReturnFlight.flightId,
-              seatid: seat.seatid,
-              isoccupied: true,
-            },
-            { onConflict: "flightid,seatid" },
-          )
-        }
-      }
+      dispatch(storeSeats({ leg: "return", seats: allReturnSeats }))
     }
 
-    // Store total number of passengers
-    sessionStorage.setItem("totalPassengers", totalPassengers.toString())
-    sessionStorage.setItem("passengerTypes", JSON.stringify(passengerTypes))
+    // Keep the number of passengers by type
+    dispatch(
+      setPassengerDetails({
+        ...passengerTypes,
+        travelClass: store.getState().search?.travelClass || "economy-saver",
+      }),
+    )
 
-    // Check if user is already logged in via cookie-based session
-    // IMPORTANT: Modified to use cookie-based authentication
+    // Check if user is already logged in (the session cookie is validated on the server)
     try {
-      // Get session token from cookie
-      const cookies = document.cookie.split(";")
-      const sessionCookie = cookies.find((cookie) => cookie.trim().startsWith("session_token="))
-      const sessionToken = sessionCookie ? sessionCookie.trim().split("=")[1] : null
+      const user = await dispatch(refreshSession())
 
-      if (sessionToken) {
-        // Query the sessions table to validate the token
-        const { data: sessionData, error: sessionError } = await supabaseClient
-          .from("sessions")
-          .select("userid, expires")
-          .eq("token", sessionToken)
-          .single()
-
-        if (sessionError) throw sessionError
-
-        // Check if session is valid and not expired
-        if (sessionData && new Date(sessionData.expires) > new Date()) {
-          // Session is valid, get user data
-          const { data: userData, error: userError } = await supabaseClient
-            .from("users")
-            .select("userid, customerid, username")
-            .eq("userid", sessionData.userid)
-            .single()
-
-          if (userError) throw userError
-
-          // Store user info in session storage
-          sessionStorage.setItem("isLoggedIn", "true")
-          sessionStorage.setItem("userEmail", userData.username)
-          sessionStorage.setItem("userId", userData.userid.toString())
-          sessionStorage.setItem("customerId", userData.customerid.toString())
-
-          // Redirect to guest information page
-          router.push("/guest-information")
-          return
-        }
+      if (user) {
+        // Redirect to guest information page
+        router.push("/guest-information")
+        return
       }
 
       // If we get here, user is not logged in or session is invalid
@@ -829,85 +719,15 @@ export default function SeatSelectionPage() {
   const handleCancelBooking = async () => {
     // Release all seat reservations
     try {
-      // Release departure seats
-      for (const seat of departureSelectedSeats) {
-        if (selectedDepartureFlight) {
-          await supabaseClient
-            .from("flightseatoccupancy")
-            .update({ isoccupied: false })
-            .eq("flightid", selectedDepartureFlight.flightId)
-            .eq("seatid", seat.seatid)
-        }
-      }
+      await api.delete("/api/seats/hold")
 
-      // Release return seats
-      for (const seat of returnSelectedSeats) {
-        if (selectedReturnFlight) {
-          await supabaseClient
-            .from("flightseatoccupancy")
-            .update({ isoccupied: false })
-            .eq("flightid", selectedReturnFlight.flightId)
-            .eq("seatid", seat.seatid)
-        }
-      }
-
-      // Clear session storage and redirect to home
-      sessionStorage.removeItem("selectedDepartureSeat")
-      sessionStorage.removeItem("selectedReturnSeat")
-      sessionStorage.removeItem("selectedSeats_departure")
-      sessionStorage.removeItem("selectedSeats_return")
+      // Clear the selected seats and redirect to home
+      dispatch(clearSeats())
       router.push("/")
     } catch (err) {
       console.error("Error releasing seat reservations:", err)
     }
   }
-
-  // Clean up reservations when component unmounts
-  useEffect(() => {
-    return () => {
-      // Only release seat reservations if navigating away without completing booking
-      const cleanup = async () => {
-        try {
-          // Check if we're navigating to the next step in the booking flow
-          const nextStepUrls = ["/confirmation", "/guest-information", "/payment", "/ticket-confirmation"]
-          const isNavigatingToNextStep = nextStepUrls.some((url) => window.location.pathname.includes(url))
-
-          if (isNavigatingToNextStep) {
-            console.log("Navigating to next step in booking flow, keeping seat reservations")
-            return
-          }
-
-          console.log("Navigating away from booking flow, releasing seat reservations")
-
-          // Release departure seats
-          for (const seat of departureSelectedSeats) {
-            if (selectedDepartureFlight) {
-              await supabaseClient
-                .from("flightseatoccupancy")
-                .update({ isoccupied: false })
-                .eq("flightid", selectedDepartureFlight.flightId)
-                .eq("seatid", seat.seatid)
-            }
-          }
-
-          // Release return seats
-          for (const seat of returnSelectedSeats) {
-            if (selectedReturnFlight) {
-              await supabaseClient
-                .from("flightseatoccupancy")
-                .update({ isoccupied: false })
-                .eq("flightid", selectedReturnFlight.flightId)
-                .eq("seatid", seat.seatid)
-            }
-          }
-        } catch (err) {
-          console.error("Error releasing seat reservations during cleanup:", err)
-        }
-      }
-
-      cleanup()
-    }
-  }, [departureSelectedSeats, returnSelectedSeats, selectedDepartureFlight, selectedReturnFlight])
 
   // Format currency
   const formatCurrency = (amount: number) => {

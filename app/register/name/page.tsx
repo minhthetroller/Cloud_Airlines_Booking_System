@@ -1,5 +1,7 @@
 "use client"
 
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setRegistration } from "@/lib/store/slices/registrationSlice"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -16,14 +18,18 @@ export default function NamePage() {
   const [firstName, setFirstName] = useState("")
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
 
-  // Check if email exists in session storage
+  // Check if email exists in the store
   useEffect(() => {
-    const email = sessionStorage.getItem("registrationEmail")
+    if (!hydrated) return
+    const email = store.getState().registration.email
     if (!email) {
       router.push("/register")
     }
-  }, [router])
+  }, [router, hydrated, store])
 
   const handleNext = () => {
     // Validate inputs
@@ -37,10 +43,8 @@ export default function NamePage() {
       return
     }
 
-    // Store name information in session storage
-    sessionStorage.setItem("registrationTitle", title)
-    sessionStorage.setItem("registrationLastName", lastName)
-    sessionStorage.setItem("registrationFirstName", firstName)
+    // Keep name information in the store
+    dispatch(setRegistration({ title, lastName, firstName }))
 
     // Navigate to the next step
     router.push("/register/details")

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import resend from "@/lib/resend/resend"
+import { isVerificationToken } from "@/lib/server/accounts"
 
 export async function POST(request: Request) {
   try {
@@ -7,6 +8,11 @@ export async function POST(request: Request) {
 
     if (!email || !token) {
       return NextResponse.json({ error: "Email and token are required" }, { status: 400 })
+    }
+
+    // Only the token stored for this account at registration can be emailed
+    if (!(await isVerificationToken(email, token))) {
+      return NextResponse.json({ error: "Invalid verification token" }, { status: 400 })
     }
 
     // Use the provided baseUrl or fall back to the environment variable
@@ -99,7 +105,7 @@ export async function POST(request: Request) {
 
     // Send the email using Resend with the HTML content
     const { data, error } = await resend.emails.send({
-        from: "Cloud Airline <noreply@cloud-airlines.space>",
+        from: process.env.RESEND_FROM || "Cloud Airline <noreply@cloud-airlines.space>",
         to: email,
         subject: "Welcome to COSMILE - Verify Your Email",
         html: htmlContent,

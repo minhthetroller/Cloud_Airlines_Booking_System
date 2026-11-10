@@ -1,5 +1,6 @@
 "use client"
 
+import { api } from "@/lib/api/client"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,8 +11,6 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Search, Lock } from "lucide-react"
-import supabaseClient from "@/lib/supabase/supabaseClient"
-import { sha256 } from "js-sha256"
 
 interface User {
   userid: number
@@ -40,12 +39,8 @@ export default function AdminUsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabaseClient
-        .from("users")
-        .select("userid, username, accountstatus, tier, points, createdat, reset_token, reset_expires")
-        .order("createdat", { ascending: false })
+      const { users: data } = await api.get<{ users: User[] }>("/api/admin/users")
 
-      if (error) throw error
       setUsers(data || [])
     } catch (err: any) {
       setError("Failed to fetch users")
@@ -67,18 +62,8 @@ export default function AdminUsersPage() {
     setError(null)
 
     try {
-      const hashedPassword = sha256(newPassword)
-
-      const { error } = await supabaseClient
-        .from("users")
-        .update({
-          passwordhash: hashedPassword,
-          reset_token: null,
-          reset_expires: null,
-        })
-        .eq("userid", selectedUser.userid)
-
-      if (error) throw error
+      // The password is hashed on the server
+      await api.patch("/api/admin/users", { userId: selectedUser.userid, newPassword })
 
       setSuccess(`Password reset successfully for ${selectedUser.username}`)
       setNewPassword("")
@@ -94,9 +79,7 @@ export default function AdminUsersPage() {
 
   const handleUpdateStatus = async (userId: number, newStatus: string) => {
     try {
-      const { error } = await supabaseClient.from("users").update({ accountstatus: newStatus }).eq("userid", userId)
-
-      if (error) throw error
+      await api.patch("/api/admin/users", { userId, accountstatus: newStatus })
 
       setSuccess(`User status updated to ${newStatus}`)
       fetchUsers()

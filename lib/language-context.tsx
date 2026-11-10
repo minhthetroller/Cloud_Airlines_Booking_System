@@ -1,7 +1,9 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect } from "react"
+import { useCallback, useEffect } from "react"
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks"
+import { setLanguage as setLanguageAction } from "@/lib/store/slices/languageSlice"
 
 type Language = "en" | "vi"
 
@@ -172,35 +174,44 @@ const translations = {
   },
 }
 
-const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
+const LANGUAGE_COOKIE = "language"
 
+// The language lives in the Redux store; the preference is remembered in a cookie
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>("en")
+  const dispatch = useAppDispatch()
 
   useEffect(() => {
-    // Load language preference from localStorage if available
-    const savedLanguage = localStorage.getItem("language") as Language
+    // Load language preference from the cookie if available
+    const savedLanguage = document.cookie
+      .split("; ")
+      .find((entry) => entry.startsWith(`${LANGUAGE_COOKIE}=`))
+      ?.split("=")[1] as Language | undefined
     if (savedLanguage && (savedLanguage === "en" || savedLanguage === "vi")) {
-      setLanguageState(savedLanguage)
+      dispatch(setLanguageAction(savedLanguage))
     }
-  }, [])
+  }, [dispatch])
 
-  const setLanguage = (lang: Language) => {
-    setLanguageState(lang)
-    localStorage.setItem("language", lang)
-  }
-
-  const t = (key: string): string => {
-    return translations[language][key as keyof typeof translations.en] || key
-  }
-
-  return <LanguageContext.Provider value={{ language, setLanguage, t }}>{children}</LanguageContext.Provider>
+  return <>{children}</>
 }
 
-export function useLanguage() {
-  const context = useContext(LanguageContext)
-  if (context === undefined) {
-    throw new Error("useLanguage must be used within a LanguageProvider")
-  }
-  return context
+export function useLanguage(): LanguageContextType {
+  const dispatch = useAppDispatch()
+  const language = useAppSelector((state) => state.language)
+
+  const setLanguage = useCallback(
+    (lang: Language) => {
+      dispatch(setLanguageAction(lang))
+      document.cookie = `${LANGUAGE_COOKIE}=${lang};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
+    },
+    [dispatch],
+  )
+
+  const t = useCallback(
+    (key: string): string => {
+      return translations[language][key as keyof typeof translations.en] || key
+    },
+    [language],
+  )
+
+  return { language, setLanguage, t }
 }

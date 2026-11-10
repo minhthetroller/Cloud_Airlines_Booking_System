@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { MapPin, Check, Loader2 } from "lucide-react"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
 
 interface Airport {
   airportcode: string
@@ -42,20 +42,12 @@ export default function AirportSelector({
       setError(null)
 
       try {
-        let query = supabaseClient.from("airports").select("airportcode, airportname, city, country")
+        // Exclude an airport if needed (e.g., the already selected origin/destination)
+        const { airports } = await api.get<{ airports: Airport[] }>(
+          `/api/airports${excludeAirport ? `?exclude=${encodeURIComponent(excludeAirport)}` : ""}`,
+        )
 
-        // If we need to exclude an airport (e.g., the already selected origin/destination)
-        if (excludeAirport) {
-          query = query.neq("airportcode", excludeAirport)
-        }
-
-        const { data, error } = await query
-
-        if (error) {
-          throw new Error(error.message)
-        }
-
-        setAirports(data || [])
+        setAirports(airports || [])
       } catch (err) {
         console.error("Error fetching airports:", err)
         setError("Failed to load airports. Please try again.")

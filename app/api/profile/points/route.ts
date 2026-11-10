@@ -1,51 +1,32 @@
-import { NextResponse } from "next/server"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { desc, eq } from "drizzle-orm"
+import { db } from "@/lib/db"
+import { bookings } from "@/lib/db/schema"
+import { requireUser } from "@/lib/server/auth"
+import { route } from "@/lib/server/http"
 
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const email = searchParams.get("email")
+export const dynamic = "force-dynamic"
 
-    if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 })
-    }
+export const GET = route(async () => {
+  const session = await requireUser()
 
-    // Get user record from users table
-    const { data: userData, error: userError } = await supabaseClient
-      .from("users")
-      .select("userid")
-      .eq("username", email)
-      .single()
-
-    if (userError) {
-      return NextResponse.json({ error: `Error fetching user data: ${userError.message}` }, { status: 500 })
-    }
-
-    const { data: bookingsData, error: bookingsError } = await supabaseClient
-      .from("bookings")
-      .select("*")
-      .eq("userid", userData.userid)
-      .order("bookingdatetime", { ascending: false })
-
-    if (bookingsError) {
-      console.error("Error fetching bookings:", bookingsError)
-      return NextResponse.json({ error: bookingsError.message }, { status: 500 })
-    }
-
-    const pointHistoryData = bookingsData.map((booking: any) => {
-      const points = Math.floor(booking.totalprice / 500000)
-      return {
-        id: booking.bookingid,
-        date: booking.bookingdatetime,
-        description: `Flight booking - ${booking.bookingreference}`,
-        points: points,
-        type: "earned",
-      }
+  const rows = await db
+    .select({
+      bookingid: bookings.bookingid,
+      bookingdatetime: bookings.bookingdatetime,
+      bookingreference: bookings.bookingreference,
+      totalprice: bookings.totalprice,
     })
+    .from(bookings)
+    .where(eq(bookings.userid, session.userId))
+    .orderBy(desc(bookings.bookingdatetime))
 
-    return NextResponse.json({ pointHistory: pointHistoryData })
-  } catch (error: any) {
-    console.error("Error fetching point history:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-}
+  const pointHistory = rows.map((booking) => ({
+    id: booking.bookingid,
+    date: booking.bookingdatetime,
+    description: `Flight booking - ${booking.bookingreference}`,
+    points: Math.floor(booking.totalprice / 500000),
+    type: "earned",
+  }))
+
+  return { pointHistory }
+})

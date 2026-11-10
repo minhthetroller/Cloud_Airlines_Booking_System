@@ -1,12 +1,14 @@
 "use client"
 
+import { api } from "@/lib/api/client"
+import { useAppDispatch, useAppStore, useHydrated } from "@/lib/store/hooks"
+import { setRegistration } from "@/lib/store/slices/registrationSlice"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import Image from "next/image"
-import supabaseClient from "@/lib/supabase/supabaseClient"
 import axios from "axios"
 
 export default function ConfirmationPage() {
@@ -16,21 +18,25 @@ export default function ConfirmationPage() {
   const [error, setError] = useState<string | null>(null)
   const [updateSuccess, setUpdateSuccess] = useState(false)
   const router = useRouter()
+  const dispatch = useAppDispatch()
+  const store = useAppStore()
+  const hydrated = useHydrated()
 
   const [contactEmail, setContactEmail] = useState("")
   const [contactPhone, setContactPhone] = useState("")
 
   useEffect(() => {
-    // Get email from session storage
-    const storedEmail = sessionStorage.getItem("registrationEmail")
+    if (!hydrated) return
+
+    // Get email from the store
+    const { email: storedEmail, customerData } = store.getState().registration
     if (!storedEmail) {
       router.push("/register")
       return
     }
 
     // Check if customer data exists
-    const customerDataStr = sessionStorage.getItem("customerData")
-    if (!customerDataStr) {
+    if (!customerData) {
       router.push("/register/details")
       return
     }
@@ -44,56 +50,10 @@ export default function ConfirmationPage() {
 
         // Generate a token for verification
         const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-        sessionStorage.setItem("registrationToken", token)
+        dispatch(setRegistration({ token }))
 
-        // Parse customer data
-        const customerData = JSON.parse(customerDataStr)
-
-        // Create customer record
-        const { data: customerResult, error: customerError } = await supabaseClient
-          .from("customers")
-          .insert([
-            {
-              firstname: customerData.firstName,
-              lastname: customerData.lastName,
-              email: storedEmail,
-              dateofbirth: customerData.dateOfBirth,
-              gender: customerData.gender,
-              nationality: customerData.nationality,
-              identitycardnumber: customerData.identityCardNumber,
-              phonenumber: customerData.phoneNumber,
-              country: customerData.country,
-              city: customerData.city,
-              addressline: customerData.address,
-              pronoun: customerData.pronoun || "Prefer not to say",
-              contactname: `${customerData.firstName} ${customerData.lastName}`,
-            },
-          ])
-          .select("customerid")
-          .single()
-
-        if (customerError) {
-          throw new Error(`Error creating customer: ${customerError.message}`)
-        }
-
-        // Get the customer ID
-        const customerId = customerResult.customerid
-
-        // Create user record with unverified status
-        const { error: userError } = await supabaseClient.from("users").insert([
-          {
-            customerid: customerId,
-            username: storedEmail,
-            passwordhash: "", // Will be updated when user sets password
-            pointsavailable: 0,
-            accountstatus: "unverified",
-            dateregistered: new Date().toISOString(),
-          },
-        ])
-
-        if (userError) {
-          throw new Error(`Error creating user: ${userError.message}`)
-        }
+        // Create the customer record and the unverified user on the server (one transaction)
+        await api.post("/api/register", { email: storedEmail, token, customerData })
 
         // Send the verification email
         const response = await axios.post("/api/send-email", {
@@ -111,14 +71,14 @@ export default function ConfirmationPage() {
     }
 
     storeDataAndSendEmail()
-  }, [router])
+  }, [router, hydrated, store, dispatch])
 
   const handleResend = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const token = sessionStorage.getItem("registrationToken")
+      const token = store.getState().registration.token
       if (!token) {
         throw new Error("Verification token not found")
       }
@@ -146,7 +106,7 @@ export default function ConfirmationPage() {
 
   // Function to handle manual verification
   const handleManualVerification = () => {
-    const token = sessionStorage.getItem("registrationToken")
+    const token = store.getState().registration.token
     if (token) {
       router.push(`/register/manual-verification?token=${token}&email=${encodeURIComponent(email)}`)
     } else {

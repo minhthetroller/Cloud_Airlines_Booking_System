@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { useAppDispatch } from "@/lib/store/hooks"
+import { setRegistration } from "@/lib/store/slices/registrationSlice"
 import axios from "axios"
 
 export default function RegisterPage() {
@@ -17,6 +19,7 @@ export default function RegisterPage() {
   const [ageVerified, setAgeVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const dispatch = useAppDispatch()
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
 
   const validateEmail = (email: string) => {
@@ -66,8 +69,8 @@ export default function RegisterPage() {
       return
     }
 
-    // Store email in session storage for the next steps
-    sessionStorage.setItem("registrationEmail", email)
+    // Keep email in the store for the next steps
+    dispatch(setRegistration({ email }))
 
     // Navigate to the next step
     router.push("/register/name")

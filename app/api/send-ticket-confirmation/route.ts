@@ -133,7 +133,7 @@ export async function POST(request: Request) {
 
     // Send the email using Resend with the HTML content
     const { data, error } = await resend.emails.send({
-      from: "Cloud Airline <noreply@cloud-airlines.space>",
+      from: process.env.RESEND_FROM || "Cloud Airline <noreply@cloud-airlines.space>",
       to: email,
       subject: `Your Booking Confirmation - ${booking.bookingreference || "Booking"}`,
       html: htmlContent,

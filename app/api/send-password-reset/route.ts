@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import resend from "@/lib/resend/resend"
-import supabaseClient from "@/lib/supabase/supabaseClient"
-import { v4 as uuidv4 } from "uuid"
+import { createPasswordReset } from "@/lib/server/accounts"
 
 
 export async function POST(request: NextRequest) {
@@ -12,41 +11,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
     }
 
-    // Check if user exists
-    const { data: userCheck, error: userCheckError } = await supabaseClient
-      .from("users")
-      .select("userid, username")
-      .eq("username", email)
-      .single()
-
-    if (userCheckError) {
+    // Store a one-hour reset token for the user
+    let resetToken: string
+    try {
+      resetToken = await createPasswordReset(email)
+    } catch {
       return NextResponse.json({ error: "Email address not found" }, { status: 404 })
     }
 
-    // Generate reset token
-    const resetToken = uuidv4()
-    const expires = new Date()
-    expires.setHours(expires.getHours() + 1) // Token expires in 1 hour
-
-    // Store reset token in users table
-    const { error: updateError } = await supabaseClient
-      .from("users")
-      .update({
-        reset_token: resetToken,
-        reset_expires: expires.toISOString(),
-      })
-      .eq("userid", userCheck.userid)
-
-    if (updateError) {
-      console.error("Token update error:", updateError)
-      return NextResponse.json({ error: "Failed to create reset token" }, { status: 500 })
-    }
-
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.cloud-airlines.space/"
-    const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`
+    const resetUrl = `${baseUrl.replace(/\/$/, "")}/reset-password?token=${resetToken}`
 
     const { data, error } = await resend.emails.send({
-      from: "COSMILE <noreply@cloud-airlines.space>",
+      from: process.env.RESEND_FROM || "COSMILE <noreply@cloud-airlines.space>",
       to: [email],
       subject: "Reset Your COSMILE Password",
       html: `

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Plane, Calendar, CreditCard, User, MapPin } from "lucide-react"
-import supabaseClient from "@/lib/supabase/supabaseClient"
+import { api } from "@/lib/api/client"
 import { format } from "date-fns"
 
 export default function BookingStatusPage() {
@@ -39,68 +39,15 @@ export default function BookingStatusPage() {
     setPayment(null)
 
     try {
-      // Step 1: Find the booking by reference
-      const { data: bookingData, error: bookingError } = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .eq("bookingreference", bookingReference)
-        .single()
-
-      if (bookingError || !bookingData) {
-        throw new Error("Booking not found. Please check your booking reference.")
-      }
-
-      // Step 2: Verify the last name matches a passenger on this booking
-      const { data: passengersData, error: passengersError } = await supabaseClient
-        .from("passengers")
-        .select("*, customers(*)")
-        .eq("bookingid", bookingData.bookingid)
-
-      if (passengersError || !passengersData || passengersData.length === 0) {
-        throw new Error("No passengers found for this booking.")
-      }
-
-      // Check if any passenger's last name matches
-      const lastNameMatch = passengersData.some(
-        (passenger) =>
-          passenger.customers &&
-          passenger.customers.lastname &&
-          passenger.customers.lastname.toLowerCase() === lastName.toLowerCase(),
-      )
-
-      if (!lastNameMatch) {
-        throw new Error(
-          "The last name you entered does not match any passenger on this booking. Please check and try again.",
-        )
-      }
-
-      // Step 3: Get tickets for this booking
-      const { data: ticketsData, error: ticketsError } = await supabaseClient
-        .from("tickets")
-        .select(`
-          *,
-          flights(*),
-          seats(*),
-          passengers(*, customers(*))
-        `)
-        .eq("bookingid", bookingData.bookingid)
-
-      if (ticketsError) {
-        console.error("Error fetching tickets:", ticketsError)
-      }
-
-      // Step 4: Get payment information
-      const { data: paymentData, error: paymentError } = await supabaseClient
-        .from("payments")
-        .select("*")
-        .eq("bookingid", bookingData.bookingid)
-        .order("paymentdatetime", { ascending: false })
-        .limit(1)
-        .single()
-
-      if (paymentError) {
-        console.error("Error fetching payment:", paymentError)
-      }
+      // Find the booking by reference; the server verifies the last name against its passengers
+      const {
+        booking: bookingData,
+        tickets: ticketsData,
+        payment: paymentData,
+      } = await api.post<{ booking: any; tickets: any[]; payment: any | null }>("/api/bookings/lookup", {
+        bookingReference,
+        lastName,
+      })
 
       // Set the data
       setBookingDetails(bookingData)
